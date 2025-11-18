@@ -1,7 +1,7 @@
 # ====================================
 # 開発環境ステージ
 # ====================================
-FROM eclipse-temurin:17-jdk-jammy AS development
+FROM eclipse-temurin:21-jdk-jammy AS development
 
 RUN apt-get update && \
     apt-get install -y git curl sudo bash python3 && \
@@ -35,3 +35,49 @@ USER root
 RUN npm install -g @google/gemini-cli
 # 元のユーザーに戻す
 USER vscode
+
+# ====================================
+# 本番環境: ビルドステージ
+# ====================================
+FROM eclipse-temurin:21-jdk-jammy AS production-builder
+
+WORKDIR /build
+
+# Gradleラッパーとビルドファイルをコピー
+COPY gradlew .
+COPY gradle gradle
+COPY build.gradle settings.gradle ./
+
+# 依存関係を事前ダウンロード（キャッシュ効率化）
+RUN ./gradlew dependencies --no-daemon || true
+
+# ソースコードをコピーしてビルド
+COPY src src
+RUN ./gradlew bootJar --no-daemon
+
+# ====================================
+# 本番環境: 実行ステージ
+# ====================================
+FROM eclipse-temurin:21-jre-alpine AS production
+
+RUN apk add --update curl
+
+# セキュリティ: 非rootユーザーで実行
+RUN addgroup -S appuser && adduser -S -G appuser appuser
+
+WORKDIR /app
+
+# ビルドステージからJARファイルのみコピー
+COPY --from=production-builder /build/build/libs/*.jar app.jar
+
+# 所有権を変更
+RUN chown appuser:appuser /app/app.jar
+
+# ヘルスチェック設定
+# docker-compose の depends_on で condition: service_healthy を使用するために必要
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=60s \
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+USER appuser
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -68,6 +68,8 @@ public class WebClientConfig {
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, resourceServerTimeout * 1000)
             // レスポンスタイムアウト設定
             .responseTimeout(Duration.ofSeconds(resourceServerTimeout))
+            // HTTPリダイレクト自動追跡を有効化（301, 302等を自動的に追跡）
+            .followRedirect(true)
             // 接続確立後のタイムアウトハンドラー設定
             .doOnConnected(
                 conn -> conn
