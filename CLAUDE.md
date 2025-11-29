@@ -23,10 +23,10 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 
 2. **PKCE対応**: Authorization Code with PKCEによるセキュアなOAuth2認証
 
-3. **最小構成**: 18ファイルで構成された、保守しやすいシンプルな設計
+3. **最小構成**: 19ファイルで構成された、保守しやすいシンプルな設計
    - 未使用のクラス・メソッドは一切なし
    - Spring Boot自動設定を最大限活用
-   - シンプルな設定管理（@Valueアノテーション）
+   - 型安全な設定管理（@ConfigurationProperties）
 
 4. **完全なCSRF保護**: CookieベースのCSRFトークンで状態変更操作を保護
 
@@ -38,28 +38,32 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 
 ## アーキテクチャ
 
-### 認証フロー（PKCE対応）
+### 認証フロー（PKCE対応）- 集約型BFF
 ```
 フロントエンド (SPA)
     ↓ Cookie: BFFSESSIONID + XSRF-TOKEN
    BFF (APIゲートウェイ)
     ├─ 認証管理 (/bff/auth/*)
-    ├─ APIプロキシ (/api/**)  ← すべてのAPIを透過的にプロキシ
+    ├─ APIプロキシ (/api/**)  ← パスベースで複数のリソースサーバーにルーティング
     └─ トークン管理（Redisセッション）
     ↓ Authorization: Bearer <access_token>
-リソースサーバー (API)
+    ├─ /api/my-books/** → My Books API
+    └─ /api/my-musics/** → My Musics API
+         ↓
+複数のリソースサーバー
     ├─ ビジネスロジック
     ├─ 権限制御  ← 権限チェックはここで実施
     └─ データ処理
 ```
 
-### 主要コンポーネント（最小構成・18ファイル）
+### 主要コンポーネント（最小構成・19ファイル）
 
 #### アプリケーション
 - **AuthBffApplication**: メインクラス
 
 #### 設定 (config/)
-- **WebClientConfig**: 共有WebClient設定（シングルトン、タイムアウト管理）
+- **ResourceServerProperties**: リソースサーバー設定プロパティ（複数サーバー対応）
+- **WebClientConfig**: サービスごとのWebClient設定（コネクションプール最適化）
 - **CsrfCookieFilter**: CSRF Cookie自動設定フィルター
 - **RedisConfig**: Spring Session Data Redis設定
 - **SecurityConfig**: Spring Security設定（PKCE、CSRF保護、CORS、フィルターチェーン例外処理）
@@ -100,25 +104,30 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 | POST | `/bff/auth/logout?complete=true` | 完全ログアウト（IDプロバイダーセッションも無効化） | `LogoutResponse` |
 | GET | `/actuator/health` | ヘルスチェック | Spring Boot Actuator標準レスポンス |
 
-### APIプロキシエンドポイント
+### APIプロキシエンドポイント（パスベースルーティング）
 
 | メソッド | パス | 説明 | 転送先 |
 |---------|------|------|--------|
-| GET/POST/PUT/DELETE/PATCH | `/api/**` | すべてのAPIリクエストをプロキシ | `${RESOURCE_SERVER_URL}/**` |
+| GET/POST/PUT/DELETE/PATCH | `/api/my-books/**` | My Books APIへのリクエスト | `${MY_BOOKS_SERVICE_URL}/**` |
+| GET/POST/PUT/DELETE/PATCH | `/api/my-musics/**` | My Musics APIへのリクエスト | `${MY_MUSICS_SERVICE_URL}/**` |
 
 **重要な設計方針**:
-- BFFは `/api/**` 配下のすべてのリクエストを透過的にプロキシ
+- BFFは `/api/**` 配下のリクエストをパスプレフィックスに基づいて適切なリソースサーバーにルーティング
 - 認証済みユーザーのアクセストークンを自動的に付与
 - **権限制御はリソースサーバー側で実施**（BFFは権限チェックなし）
-- 新しいAPIエンドポイント追加時、BFFのコード変更は不要
+- 新しいリソースサーバーの追加は `application.yml` の設定のみで可能
 
 **プロキシの動作例**:
 ```
-フロントエンド                BFF                     リソースサーバー
-GET /api/books/list    →  GET /books/list     (トークン付与)
-POST /api/music        →  POST /music         (トークン付与)
-GET /api/admin/users   →  GET /admin/users    (トークン付与、権限チェックはリソースサーバー側)
+フロントエンド                    BFF                          リソースサーバー
+GET /api/my-books/list     →  GET /list          →  My Books API  (トークン付与)
+POST /api/my-musics/search →  POST /search       →  My Musics API (トークン付与)
+GET /api/my-books/1        →  GET /1             →  My Books API  (トークン付与、権限チェックはリソースサーバー側)
 ```
+
+**パスプレフィックスの自動削除**:
+- `/api/my-books/list` → My Books APIに `/list` として転送
+- `/api/my-musics/search` → My Musics APIに `/search` として転送
 
 ## DTOクラス
 
@@ -303,14 +312,17 @@ REDIS_PORT=6379
 # フロントエンドURL
 FRONTEND_URL=http://localhost:5173
 
-# リソースサーバーURL
-RESOURCE_SERVER_URL=http://api.example.com
+# 複数のリソースサーバー設定
+# My Books Service
+MY_BOOKS_SERVICE_URL=http://my-books-api:8080
+MY_BOOKS_SERVICE_TIMEOUT=30
+
+# My Musics Service
+MY_MUSICS_SERVICE_URL=http://my-musics-api:8081
+MY_MUSICS_SERVICE_TIMEOUT=30
 
 # CORS許可オリジン（カンマ区切り）
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:*
-
-# リソースサーバータイムアウト（秒、デフォルト: 30）
-RESOURCE_SERVER_TIMEOUT=30
 ```
 
 **重要**: `IDP_ISSUER_URI`を使用することで、Spring Securityが自動的に各エンドポイント（authorize, token, jwk, logout）を検出します。個別エンドポイント指定は不要です。
@@ -457,14 +469,15 @@ docker compose up -d
 
 ## プロジェクト構成
 
-### 📁 ソースコード構成（18ファイル）
+### 📁 ソースコード構成（19ファイル）
 
 ```
 src/main/java/com/example/auth_bff/
 ├── AuthBffApplication.java              # メインクラス
 │
-├── config/                              # 設定（5ファイル）
-│   ├── WebClientConfig.java             # 共有WebClient設定（シングルトン）
+├── config/                              # 設定（6ファイル）
+│   ├── ResourceServerProperties.java    # リソースサーバー設定プロパティ（複数サーバー対応）
+│   ├── WebClientConfig.java             # サービスごとのWebClient設定（コネクションプール最適化）
 │   ├── CsrfCookieFilter.java           # CSRF Cookie自動設定フィルター
 │   ├── RedisConfig.java                 # Redis/Spring Session設定
 │   ├── SecurityConfig.java              # Spring Security + PKCE + CORS + フィルターチェーン例外処理
@@ -475,7 +488,7 @@ src/main/java/com/example/auth_bff/
 │   └── RateLimitFilter.java             # レート制限フィルター
 │
 ├── controller/                          # コントローラー（2ファイル）
-│   ├── ApiProxyController.java          # APIプロキシ（/api/**、214行、1メソッド）
+│   ├── ApiProxyController.java          # APIプロキシ（パスベースルーティング、複数リソースサーバー対応）
 │   └── AuthController.java              # 認証エンドポイント（/bff/auth/*）
 │
 ├── client/                              # クライアント（1ファイル）
@@ -498,13 +511,13 @@ src/main/java/com/example/auth_bff/
 ### 🎯 設計原則
 
 1. **必要最小限の構成**: すべてのクラスとメソッドが実際に使用されている
-2. **BFFパターン**: フロントエンドはトークンを一切扱わない
+2. **BFFパターン（集約型）**: フロントエンドはトークンを一切扱わず、複数のリソースサーバーを集約
 3. **権限制御の委譲**: BFFは認証に専念、権限はリソースサーバーが管理
 4. **Spring Boot自動設定の活用**: カスタムBean最小限
 5. **統一されたエラーハンドリング**: FilterChainExceptionHandlerとGlobalExceptionHandlerで一貫したエラーレスポンス
-6. **1メソッドプロキシ**: ApiProxyControllerは214行、1メソッドのみ
-7. **シンプルな設定管理**: @Valueアノテーションで直接的に設定値を取得
-8. **WebClientシングルトン**: コネクションプール再利用によるパフォーマンス向上
+6. **パスベースルーティング**: ApiProxyControllerはパスプレフィックスで適切なサービスを選択
+7. **型安全な設定管理**: @ConfigurationPropertiesで複数サービスの設定を一元管理
+8. **サービスごとのWebClient**: サービスごとに最適化されたコネクションプールとタイムアウト設定
 9. **分散レート制限**: Redis + Bucket4jで複数インスタンス間でレート制限を共有
 10. **フィルターチェーン例外処理**: Spring Securityフィルターチェーン内の例外も統一されたErrorResponse形式で返却
 

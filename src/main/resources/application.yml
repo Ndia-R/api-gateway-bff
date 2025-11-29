@@ -21,8 +21,8 @@ spring:
   # Redis Configuration for Session Storage
   data:
     redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT}
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
       timeout: 2000ms
       lettuce:
         pool:
@@ -73,12 +73,16 @@ app:
   # フロントエンドURL
   frontend:
     url: ${FRONTEND_URL}
-  # リソースサーバーURL
-  resource-server:
-    url: ${RESOURCE_SERVER_URL}
-    # タイムアウト設定（秒）
-    # WebClient経由のリソースサーバーへの接続・読み込み・書き込みタイムアウト
-    timeout: ${RESOURCE_SERVER_TIMEOUT}
+  # 複数のリソースサーバー設定
+  resource-servers:
+    my-books:
+      url: ${MY_BOOKS_SERVICE_URL:http://my-books-api:8080}
+      timeout: 30
+      path-prefix: /my-books
+    my-musics:
+      url: ${MY_MUSICS_SERVICE_URL:http://my-musics-api:8081}
+      timeout: 30
+      path-prefix: /my-musics
   # CORS許可オリジン
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
@@ -88,18 +92,18 @@ app:
 # ============================================
 rate-limit:
   # レート制限機能の有効/無効
-  enabled: ${RATE_LIMIT_ENABLED}
+  enabled: ${RATE_LIMIT_ENABLED:true}
   # 認証エンドポイントのレート制限（/bff/auth/login）
   auth:
-    rpm: ${RATE_LIMIT_AUTH_RPM}
+    rpm: ${RATE_LIMIT_AUTH_RPM:30}
   # APIプロキシのレート制限（/api/**）
   api:
     # 認証済みユーザー（セッションIDベース）
     authenticated:
-      rpm: ${RATE_LIMIT_API_AUTHENTICATED_RPM}
+      rpm: ${RATE_LIMIT_API_AUTHENTICATED_RPM:200}
     # 未認証ユーザー（IPアドレスベース）未認証でもアクセス可能なエンドポイントを保護
     anonymous:
-      rpm: ${RATE_LIMIT_API_ANONYMOUS_RPM}
+      rpm: ${RATE_LIMIT_API_ANONYMOUS_RPM:100}
 
 # ============================================
 # Management and Actuator
@@ -118,12 +122,12 @@ management:
 # ============================================
 logging:
   level:
-    root: INFO
-    com.example.auth_bff: INFO
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.example.auth_bff: ${LOG_LEVEL_APP:INFO}
     # Spring Security関連のログは警告以上のみ
-    org.springframework.security: WARN
-    org.springframework.security.oauth2: WARN
-    org.springframework.session: WARN
+    org.springframework.security: ${LOG_LEVEL_SECURITY:WARN}
+    org.springframework.security.oauth2: ${LOG_LEVEL_OAUTH2:WARN}
+    org.springframework.session: ${LOG_LEVEL_SESSION:WARN}
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 

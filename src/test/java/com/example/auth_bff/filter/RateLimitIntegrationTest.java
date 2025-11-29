@@ -40,8 +40,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestPropertySource(properties = {
     "app.frontend.url=http://localhost:5173",
-    "app.resource-server.url=http://localhost:9000",
-    "app.resource-server.timeout=30",
+    "app.resource-servers.my-books.url=http://localhost:9000",
+    "app.resource-servers.my-books.timeout=30",
+    "app.resource-servers.my-books.path-prefix=/my-books",
+    "app.resource-servers.my-musics.url=http://localhost:9001",
+    "app.resource-servers.my-musics.timeout=30",
+    "app.resource-servers.my-musics.path-prefix=/my-musics",
     "app.cors.allowed-origins=http://localhost:5173",
     "idp.post-logout-redirect-uri=http://localhost:5173/logout-complete",
 

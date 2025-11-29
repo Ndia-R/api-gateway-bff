@@ -1,8 +1,8 @@
 package com.example.auth_bff.controller;
 
+import com.example.auth_bff.config.ResourceServerProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
@@ -20,29 +20,37 @@ import org.springframework.web.util.UriBuilder;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.net.URI;
+import java.util.Map;
 import java.util.Set;
 
 /**
  * APIプロキシコントローラー
  *
- * <p>フロントエンドからのすべてのAPIリクエストをリソースサーバーに転送する。
+ * <p>フロントエンドからのすべてのAPIリクエストを複数のリソースサーバーに振り分けて転送する。</p>
  *
- * <h3>BFFパターンの実装</h3>
+ * <h3>BFFパターンの実装（集約型）</h3>
  * <ul>
  *   <li>トークンをフロントエンドから隠蔽し、BFF側で管理</li>
  *   <li>認証済みユーザーのアクセストークンを自動的に付与</li>
  *   <li>未認証ユーザーのリクエストはトークンなしでリソースサーバーへ転送</li>
  *   <li>リソースサーバーのレスポンスを透過的に転送</li>
+ *   <li>パスベースのルーティングで複数のバックエンドサービスに対応</li>
+ * </ul>
+ *
+ * <h3>ルーティング例</h3>
+ * <ul>
+ *   <li>/api/my-books/list → my-books サービス → http://my-books-api:8080/list</li>
+ *   <li>/api/my-musics/search → my-musics サービス → http://my-musics-api:8081/search</li>
  * </ul>
  *
  * <h3>権限制御</h3>
  * <p>権限制御はリソースサーバー側で行う。BFFは認証・未認証に関わらず
  * すべてのリクエストを転送し、リソースサーバーが適切に権限チェックを実施する。
- * 認証が必要なエンドポイントにアクセスした場合、リソースサーバーが401を返す。
+ * 認証が必要なエンドポイントにアクセスした場合、リソースサーバーが401を返す。</p>
  *
  * <h3>WebClient利用</h3>
- * <p>WebClientはWebClientConfigで定義されたシングルトンBeanを使用。
- * コネクションプールの再利用によりパフォーマンスとリソース効率を向上。
+ * <p>WebClientはWebClientConfigで定義されたサービスごとのBeanを使用。
+ * コネクションプールの再利用によりパフォーマンスとリソース効率を向上。</p>
  */
 @Slf4j
 @RestController
@@ -50,11 +58,9 @@ import java.util.Set;
 @RequestMapping("/api")
 public class ApiProxyController {
 
-    private final WebClient webClient;
+    private final Map<String, WebClient> webClients;
     private final OAuth2AuthorizedClientRepository authorizedClientRepository;
-
-    @Value("${app.resource-server.url}")
-    private String resourceServerUrl;
+    private final ResourceServerProperties resourceServerProperties;
 
     /**
      * 除外すべきレスポンスヘッダー
@@ -82,18 +88,46 @@ public class ApiProxyController {
     );
 
     /**
-     * すべてのAPIリクエストをリソースサーバーにプロキシ
+     * リクエストパスからリソースサーバーを選択
+     *
+     * <p>パスプレフィックスに基づいて、適切なリソースサーバーを選択します。</p>
+     *
+     * <h3>ルーティング例:</h3>
+     * <ul>
+     *   <li>/my-books/list → my-books サービス</li>
+     *   <li>/my-musics/search → my-musics サービス</li>
+     * </ul>
+     *
+     * @param path リクエストパス（/api を除いた部分）
+     * @return サービス名
+     * @throws IllegalArgumentException パスに対応するサービスが見つからない場合
+     */
+    private String selectService(String path) {
+        return resourceServerProperties.getResourceServers()
+            .entrySet()
+            .stream()
+            .filter(entry -> path.startsWith(entry.getValue().getPathPrefix()))
+            .map(Map.Entry::getKey)
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("No service found for path: " + path));
+    }
+
+    /**
+     * すべてのAPIリクエストを適切なリソースサーバーにプロキシ
      *
      * <p>このエンドポイントは /api/** 配下のすべてのリクエストを受け付け、
-     * リソースサーバーに転送する。認証済みの場合のみアクセストークンを付与する。
-     *
+     * パスベースのルーティングで適切なリソースサーバーに転送する。
+     * 認証済みの場合のみアクセストークンを付与する。</p>
+     * 
      * <h3>処理フロー</h3>
      * <ol>
      *   <li>リクエストパスからHTTPメソッドとパスを取得</li>
+     *   <li>パスプレフィックスに基づいて転送先サービスを選択</li>
+     *   <li>パスプレフィックスを削除してターゲットパスを作成</li>
      *   <li>UriBuilderで安全なURIを構築（クエリパラメータ自動エンコード）</li>
      *   <li>認証状態を確認し、認証済みの場合のみアクセストークンを設定</li>
      *   <li>Content-Typeヘッダーを設定</li>
-     *   <li>リソースサーバーにリクエストを転送（30秒タイムアウト）</li>
+     *   <li>選択したリソースサーバーにリクエストを転送（サービスごとのタイムアウト）</li>
      *   <li>レスポンスのステータスコード・ヘッダー・ボディを保持して返却</li>
      * </ol>
      *
@@ -108,6 +142,7 @@ public class ApiProxyController {
      * @param request HTTPリクエスト
      * @param body リクエストボディ（GET/DELETEの場合はnull）
      * @return リソースサーバーからのレスポンス（ステータスコード・ヘッダー・ボディ）
+     * @throws IllegalArgumentException パスに対応するサービスが見つからない場合
      */
     @RequestMapping("/**")
     @SuppressWarnings("null") // HttpServletRequest/UriBuilder/WebClient APIの型アノテーション互換性のため警告を抑制
@@ -119,17 +154,29 @@ public class ApiProxyController {
         String method = request.getMethod();
         String path = request.getRequestURI().replace("/api", "");
 
+        // パスからサービスを選択
+        String serviceName = selectService(path);
+        WebClient selectedClient = webClients.get(serviceName);
+        ResourceServerProperties.ServerConfig serviceConfig = resourceServerProperties.getResourceServers()
+            .get(serviceName);
+
+        // パスプレフィックスを削除してターゲットパスを作成
+        String pathPrefix = serviceConfig.getPathPrefix();
+        String targetPath = path.startsWith(pathPrefix) ? path.substring(pathPrefix.length()) : path;
+
+        log.debug("Routing request: path={}, service={}, targetPath={}", path, serviceName, targetPath);
+
         // WebClientリクエストビルダー
-        WebClient.RequestBodyUriSpec requestBuilder = webClient.method(HttpMethod.valueOf(method));
+        WebClient.RequestBodyUriSpec requestBuilder = selectedClient.method(HttpMethod.valueOf(method));
 
         // URI設定（共通）
         WebClient.RequestBodySpec bodySpec = requestBuilder.uri(uriBuilder -> {
-            URI baseUri = URI.create(resourceServerUrl);
+            URI baseUri = URI.create(serviceConfig.getUrl());
             UriBuilder builder = uriBuilder
                 .scheme(baseUri.getScheme())
                 .host(baseUri.getHost())
                 .port(baseUri.getPort())
-                .path(path);
+                .path(targetPath);
 
             // クエリパラメータを追加（自動エンコード）
             request.getParameterMap()
