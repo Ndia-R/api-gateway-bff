@@ -76,16 +76,13 @@ app:
   # 複数のリソースサーバー設定
   resource-servers:
     my-books:
-      url: ${MY_BOOKS_SERVICE_URL:http://my-books-api:8080}
+      url: ${MY_BOOKS_SERVICE_URL}
       timeout: 30
-      path-prefix: /my-books
+      path-prefix: ${MY_BOOKS_SERVICE_PATH_PREFIX}
     my-musics:
-      url: ${MY_MUSICS_SERVICE_URL:http://my-musics-api:8081}
+      url: ${MY_MUSICS_SERVICE_URL}
       timeout: 30
-      path-prefix: /my-musics
-  # CORS許可オリジン
-  cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+      path-prefix: ${MY_MUSICS_SERVICE_PATH_PREFIX}
 
 # ============================================
 # Rate Limit Configuration

@@ -22,15 +22,19 @@ import java.util.Map;
  * <h3>設定例（application.yml）</h3>
  * <pre>
  * app:
+ *   # フロントエンドURL
+ *   frontend:
+ *     url: ${FRONTEND_URL}
+ *   # 複数のリソースサーバー設定
  *   resource-servers:
  *     my-books:
- *       url: http://my-books-api:8080
+ *       url: ${MY_BOOKS_SERVICE_URL}
  *       timeout: 30
- *       path-prefix: /my-books
+ *       path-prefix: ${MY_BOOKS_SERVICE_PATH_PREFIX}
  *     my-musics:
- *       url: http://my-musics-api:8081
+ *       url: ${MY_MUSICS_SERVICE_URL}
  *       timeout: 30
- *       path-prefix: /my-musics
+ *       path-prefix: ${MY_MUSICS_SERVICE_PATH_PREFIX}
  * </pre>
  *
  * <h3>使用箇所</h3>

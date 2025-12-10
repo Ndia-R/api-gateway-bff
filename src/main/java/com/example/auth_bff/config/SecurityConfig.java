@@ -15,11 +15,7 @@ import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
 
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
@@ -68,12 +64,7 @@ public class SecurityConfig {
     @Value("${app.frontend.url}")
     private String frontendUrl;
 
-    /**
-     * CORS許可オリジン（カンマ区切り）
-     * 例: "http://localhost:5173,http://localhost:*"
-     */
-    @Value("${app.cors.allowed-origins}")
-    private String corsAllowedOrigins;
+
 
     /**
      * Spring Securityのフィルターチェーン設定
@@ -114,12 +105,7 @@ public class SecurityConfig {
         }
 
         http
-            // ═══════════════════════════════════════════════════════════════
-            // CORS設定: フロントエンドからのクロスオリジンリクエストを許可
-            // ═══════════════════════════════════════════════════════════════
-            .cors(
-                cors -> cors.configurationSource(corsConfigurationSource())
-            )
+
             // ═══════════════════════════════════════════════════════════════
             // CSRF保護設定: POST/PUT/DELETE等の状態変更操作を保護
             // ═══════════════════════════════════════════════════════════════
@@ -288,71 +274,7 @@ public class SecurityConfig {
     // 削除済み - Spring Bootの自動設定を使用
     // }
 
-    /**
-     * CORS（Cross-Origin Resource Sharing）設定
-     *
-     * <p>フロントエンドアプリケーション（別オリジン）からのリクエストを許可します。</p>
-     *
-     * <h3>開発環境例:</h3>
-     * <ul>
-     *   <li>フロントエンド: <code>http://localhost:5173</code> (Vite)</li>
-     *   <li>BFF: <code>http://localhost:8888</code></li>
-     *   <li>→ オリジンが異なるためCORS設定が必要</li>
-     * </ul>
-     *
-     * <h3>設定内容:</h3>
-     * <ul>
-     *   <li><b>許可オリジン</b>: 環境変数 <code>CORS_ALLOWED_ORIGINS</code> から読み込み</li>
-     *   <li><b>許可メソッド</b>: GET, POST, PUT, DELETE, OPTIONS</li>
-     *   <li><b>許可ヘッダー</b>: Authorization, Content-Type, X-XSRF-TOKEN</li>
-     *   <li><b>資格情報</b>: 許可（Cookie送信を有効化）</li>
-     * </ul>
-     *
-     * @return CORS設定ソース
-     */
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
 
-        // ────────────────────────────────────────────────────
-        // 許可オリジンの設定
-        // ────────────────────────────────────────────────────
-        // 環境変数から読み込み（カンマ区切り）
-        // 例: "http://localhost:5173,http://localhost:*"
-        String[] allowedOrigins = corsAllowedOrigins.split(",");
-        configuration.setAllowedOriginPatterns(Arrays.asList(allowedOrigins));
-
-        // ────────────────────────────────────────────────────
-        // 許可HTTPメソッドの設定
-        // ────────────────────────────────────────────────────
-        // GET: データ取得、POST: データ作成、PUT: データ更新、DELETE: データ削除
-        // OPTIONS: プリフライトリクエスト（CORS事前確認）
-        configuration.setAllowedMethods(
-            Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS")
-        );
-
-        // ────────────────────────────────────────────────────
-        // 許可HTTPヘッダーの設定
-        // ────────────────────────────────────────────────────
-        // Authorization: トークン送信（将来的なAPI直接アクセス用）
-        // Content-Type: リクエストボディの形式指定
-        // X-XSRF-TOKEN: CSRF保護用トークン（POST/PUT/DELETE時に必須）
-        configuration.setAllowedHeaders(
-            Arrays.asList("Authorization", "Content-Type", "X-XSRF-TOKEN")
-        );
-
-        // ────────────────────────────────────────────────────
-        // 資格情報（Cookie）の送信を許可
-        // ────────────────────────────────────────────────────
-        // true: フロントエンドからのリクエストにCookieを含めることを許可
-        // BFFセッションCookie（BFFSESSIONID）の送信に必須
-        configuration.setAllowCredentials(true);
-
-        // すべてのパス（/**）に対してこのCORS設定を適用
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
-    }
 
     /**
      * PKCE対応のOAuth2認可リクエストリゾルバ

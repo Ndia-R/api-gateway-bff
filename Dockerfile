@@ -18,15 +18,15 @@ RUN echo "vscode ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/vscode && \
     chmod 0440 /etc/sudoers.d/vscode
 
 # mkcert CA証明書をコピー（開発環境のみ）
-COPY mkcert-rootCA.pem /tmp/mkcert-rootCA.pem
+COPY rootCA.pem /tmp/rootCA.pem
 
 # CA証明書をJavaトラストストアに追加
 RUN keytool -import -trustcacerts -noprompt \
     -alias mkcert-ca \
-    -file /tmp/mkcert-rootCA.pem \
+    -file /tmp/rootCA.pem \
     -keystore $JAVA_HOME/lib/security/cacerts \
     -storepass changeit && \
-    rm /tmp/mkcert-rootCA.pem
+    rm /tmp/rootCA.pem
 
 # vscodeユーザーに切り替え
 USER vscode
@@ -76,15 +76,15 @@ RUN apk add --update curl
 # ↓↓↓ ★★★VirtualBox環境でのmkcert対応のため追加★★★ ↓↓↓
 
 # mkcert CA証明書をコピー（開発環境のみ）
-COPY mkcert-rootCA.pem /tmp/mkcert-rootCA.pem
+COPY rootCA.pem /tmp/rootCA.pem
 
 # CA証明書をJavaトラストストアに追加
 RUN keytool -import -trustcacerts -noprompt \
     -alias mkcert-ca \
-    -file /tmp/mkcert-rootCA.pem \
+    -file /tmp/rootCA.pem \
     -keystore $JAVA_HOME/lib/security/cacerts \
     -storepass changeit && \
-    rm /tmp/mkcert-rootCA.pem
+    rm /tmp/rootCA.pem
     
 # ↑↑↑ ★★★VirtualBox環境でのmkcert対応のため追加★★★ ↑↑↑
 
