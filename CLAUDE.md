@@ -59,7 +59,7 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 ### 主要コンポーネント（最小構成・19ファイル）
 
 #### アプリケーション
-- **AuthBffApplication**: メインクラス
+- **ApiGatewayBffApplication**: メインクラス
 
 #### 設定 (config/)
 - **ResourceServerProperties**: リソースサーバー設定プロパティ（複数サーバー対応）
@@ -382,7 +382,7 @@ IDP_ISSUER_URI=https://cognito-idp.{region}.amazonaws.com/{user-pool-id}
 
 ```
 WSL2 (Ubuntu) → VSCode DevContainer → Docker Compose
-                                          ├── auth-bff (開発コンテナ)
+                                          ├── api-gateway-bff (開発コンテナ)
                                           └── redis (セッションストレージ)
 ```
 
@@ -391,7 +391,7 @@ WSL2 (Ubuntu) → VSCode DevContainer → Docker Compose
 ### DevContainer構成
 
 #### 基本情報
-- **コンテナ名**: `auth-bff`
+- **コンテナ名**: `api-gateway-bff`
 - **ベースイメージ**: `eclipse-temurin:17-jdk-jammy`
 - **実行ユーザー**: `vscode`
 - **作業ディレクトリ**: `/workspace`
@@ -412,7 +412,7 @@ WSL2 (Ubuntu) → VSCode DevContainer → Docker Compose
 
 ### Docker Compose サービス構成
 
-#### 1. auth-bff (開発コンテナ)
+#### 1. api-gateway-bff (開発コンテナ)
 ```yaml
 ports: 8888:8080
 networks: shared-network
@@ -430,7 +430,7 @@ networks: shared-network
 ```
 外部ブラウザ
     ↓ http://localhost:8888
-auth-bff:8080 ←→ redis:6379
+api-gateway-bff:8080 ←→ redis:6379
     ↓ http://auth.localhost:8444 (外部IDプロバイダー)
 IDプロバイダー (外部認証サーバー: Keycloak/Auth0/Okta等)
 ```
@@ -473,7 +473,7 @@ docker compose up -d
 
 ```
 src/main/java/com/example/auth_bff/
-├── AuthBffApplication.java              # メインクラス
+├── ApiGatewayBffApplication.java              # メインクラス
 │
 ├── config/                              # 設定（6ファイル）
 │   ├── ResourceServerProperties.java    # リソースサーバー設定プロパティ（複数サーバー対応）
@@ -566,7 +566,7 @@ src/test/java/com/example/auth_bff/
 ```
 
 #### テストカバレッジ
-- **全24テスト**: AuthServiceTest (3テスト)、SecurityConfigTest (7テスト)、ApiProxyControllerTest (5テスト)、RateLimitIntegrationTest (7テスト)、AuthBffApplicationTests (1テスト)、TestConfig (1テスト)
+- **全24テスト**: AuthServiceTest (3テスト)、SecurityConfigTest (7テスト)、ApiProxyControllerTest (5テスト)、RateLimitIntegrationTest (7テスト)、ApiGatewayBffApplicationTests (1テスト)、TestConfig (1テスト)
 - **単体テスト**: サービス層、コントローラー層
 - **統合テスト**: セキュリティ設定、レート制限（Redis連携）
 

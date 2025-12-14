@@ -2,14 +2,14 @@ services:
   redis:
     image: redis:8.2
     networks:
-      - shared-network
+      - vsv-emerald-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 3
 
-  auth-bff:
+  api-gateway-bff:
     build:
       context: .
       dockerfile: Dockerfile
@@ -22,22 +22,24 @@ services:
       IDP_CLIENT_ID: ${IDP_CLIENT_ID}
       IDP_CLIENT_SECRET: ${IDP_CLIENT_SECRET}
       IDP_ISSUER_URI: ${IDP_ISSUER_URI}
-      # BFF関連のURL（APP_HOSTNAMEから組み立てる）
-      IDP_REDIRECT_URI: https://${APP_HOSTNAME}/bff/login/oauth2/code/idp
-      IDP_POST_LOGOUT_REDIRECT_URI: https://${APP_HOSTNAME}/logout-complete
-      FRONTEND_URL: https://${APP_HOSTNAME}
+      # BFF関連のURL（VPS_HOSTNAMEから組み立てる）
+      IDP_REDIRECT_URI: https://${VPS_HOSTNAME}/bff/login/oauth2/code/idp
+      IDP_POST_LOGOUT_REDIRECT_URI: https://${VPS_HOSTNAME}/logout-complete
+      FRONTEND_URL: https://${VPS_HOSTNAME}
       # Application Configuration
       MY_BOOKS_SERVICE_URL: ${MY_BOOKS_SERVICE_URL}
       MY_BOOKS_SERVICE_PATH_PREFIX: ${MY_BOOKS_SERVICE_PATH_PREFIX}
       MY_MUSICS_SERVICE_URL: ${MY_MUSICS_SERVICE_URL}
       MY_MUSICS_SERVICE_PATH_PREFIX: ${MY_MUSICS_SERVICE_PATH_PREFIX}
+      # Logging Settings
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     volumes:
       - .:/workspace
       - gradle-cache:/home/vscode/.gradle
       - claude-config:/home/vscode/.claude
       - gemini-config:/home/vscode/.gemini
     networks:
-      - shared-network
+      - vsv-emerald-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
@@ -55,5 +57,5 @@ volumes:
   gemini-config:
 
 networks:
-  shared-network:
+  vsv-emerald-network:
     external: true

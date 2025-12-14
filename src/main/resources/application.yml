@@ -1,6 +1,6 @@
 spring:
   application:
-    name: auth-bff
+    name: api-gateway-bff
 
   # OAuth2 Client Configuration
   security:
@@ -119,12 +119,9 @@ management:
 # ============================================
 logging:
   level:
-    root: ${LOG_LEVEL_ROOT:INFO}
-    com.example.auth_bff: ${LOG_LEVEL_APP:INFO}
+    root: ${LOG_LEVEL:INFO}
     # Spring Security関連のログは警告以上のみ
-    org.springframework.security: ${LOG_LEVEL_SECURITY:WARN}
-    org.springframework.security.oauth2: ${LOG_LEVEL_OAUTH2:WARN}
-    org.springframework.session: ${LOG_LEVEL_SESSION:WARN}
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    org.springframework.security: WARN
+    org.springframework.security.oauth2: WARN
+    org.springframework.session: WARN
 

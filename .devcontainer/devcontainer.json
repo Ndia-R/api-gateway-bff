@@ -1,7 +1,7 @@
 {
-  "name": "auth-bff",
+  "name": "api-gateway-bff",
   "dockerComposeFile": "../docker-compose.yml",
-  "service": "auth-bff",
+  "service": "api-gateway-bff",
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
   "customizations": {

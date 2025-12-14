@@ -28,7 +28,7 @@ This is a Spring Boot application that serves as a Backend for Frontend (BFF) fo
   - `SecurityConfig` - OAuth2 and security settings
   - `RedisConfig` - Redis session management
 - **Service Layer**: `TokenService` for token management
-- **Main Application**: `AuthBffApplication` (Spring Boot main class)
+- **Main Application**: `ApiGatewayBffApplication` (Spring Boot main class)
 
 ## Endpoints
 - `GET /auth/login` - Get authentication status and user info with access token
