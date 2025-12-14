@@ -31,12 +31,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(ApiProxyController.class)
 @Import(TestConfig.class)
 @TestPropertySource(properties = {
-    "app.resource-servers.my-books.url=http://localhost:9000",
-    "app.resource-servers.my-books.timeout=30",
-    "app.resource-servers.my-books.path-prefix=/my-books",
-    "app.resource-servers.my-musics.url=http://localhost:9001",
-    "app.resource-servers.my-musics.timeout=30",
-    "app.resource-servers.my-musics.path-prefix=/my-musics",
+    "app.resource-servers.service-01.url=http://localhost:9000",
+    "app.resource-servers.service-01.timeout=30",
+    "app.resource-servers.service-01.path-prefix=/service-01",
+    "app.resource-servers.service-02.url=http://localhost:9001",
+    "app.resource-servers.service-02.timeout=30",
+    "app.resource-servers.service-02.path-prefix=/service-02",
     "rate-limit.enabled=false"
 })
 @SuppressWarnings("null") // Spring Security Test APIの型アノテーション互換性のため警告を抑制
@@ -52,7 +52,7 @@ class ApiProxyControllerTest {
     @Test
     void testProxyEndpoint_WithoutAuthentication_ShouldPassSecurityCheck() throws Exception {
         // TestConfigにより認証はスキップされ、WebClientのエラーが発生
-        mockMvc.perform(get("/api/my-books/list"))
+        mockMvc.perform(get("/api/service-01/list"))
             .andExpect(status().is5xxServerError());
     }
 
@@ -66,7 +66,7 @@ class ApiProxyControllerTest {
         // このテストはセキュリティ設定のみ検証
         // 実際のWebClientの動作は統合テストで検証
         mockMvc.perform(
-            get("/api/my-books/list")
+            get("/api/service-01/list")
                 .with(oauth2Client("oidc"))
         )
             .andExpect(status().is5xxServerError()); // WebClientがモックされていないため、実際の接続エラー
@@ -79,10 +79,10 @@ class ApiProxyControllerTest {
     @WithMockUser
     void testProxyEndpoint_PostMethod_ShouldAcceptRequest() throws Exception {
         mockMvc.perform(
-            post("/api/my-books/create")
+            post("/api/service-01/create")
                 .with(oauth2Client("oidc"))
                 .contentType("application/json")
-                .content("{\"title\":\"Test Book\"}")
+                .content("{\"title\":\"Test Item\"}")
         )
             .andExpect(status().is5xxServerError()); // WebClientがモックされていないため、実際の接続エラー
     }
@@ -94,10 +94,10 @@ class ApiProxyControllerTest {
     @WithMockUser
     void testProxyEndpoint_PutMethod_ShouldAcceptRequest() throws Exception {
         mockMvc.perform(
-            put("/api/my-books/1")
+            put("/api/service-01/1")
                 .with(oauth2Client("oidc"))
                 .contentType("application/json")
-                .content("{\"title\":\"Updated Book\"}")
+                .content("{\"title\":\"Updated Item\"}")
         )
             .andExpect(status().is5xxServerError()); // WebClientがモックされていないため、実際の接続エラー
     }
@@ -109,7 +109,7 @@ class ApiProxyControllerTest {
     @WithMockUser
     void testProxyEndpoint_DeleteMethod_ShouldAcceptRequest() throws Exception {
         mockMvc.perform(
-            delete("/api/my-books/1")
+            delete("/api/service-01/1")
                 .with(oauth2Client("oidc"))
         )
             .andExpect(status().is5xxServerError()); // WebClientがモックされていないため、実際の接続エラー

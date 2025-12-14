@@ -75,14 +75,26 @@ app:
     url: ${FRONTEND_URL}
   # 複数のリソースサーバー設定
   resource-servers:
-    my-books:
-      url: ${MY_BOOKS_SERVICE_URL}
+    service-01:
+      url: ${SERVICE_01_URL:http://service-01-api:8080}
       timeout: 30
-      path-prefix: ${MY_BOOKS_SERVICE_PATH_PREFIX}
-    my-musics:
-      url: ${MY_MUSICS_SERVICE_URL}
+      path-prefix: ${SERVICE_01_PATH_PREFIX:/service-01}
+    service-02:
+      url: ${SERVICE_02_URL:http://service-02-api:8080}
       timeout: 30
-      path-prefix: ${MY_MUSICS_SERVICE_PATH_PREFIX}
+      path-prefix: ${SERVICE_02_PATH_PREFIX:/service-02}
+    service-03:
+      url: ${SERVICE_03_URL:http://service-03-api:8080}
+      timeout: 30
+      path-prefix: ${SERVICE_03_PATH_PREFIX:/service-03}
+    service-04:
+      url: ${SERVICE_04_URL:http://service-04-api:8080}
+      timeout: 30
+      path-prefix: ${SERVICE_04_PATH_PREFIX:/service-04}
+    service-05:
+      url: ${SERVICE_05_URL:http://service-05-api:8080}
+      timeout: 30
+      path-prefix: ${SERVICE_05_PATH_PREFIX:/service-05}
 
 # ============================================
 # Rate Limit Configuration

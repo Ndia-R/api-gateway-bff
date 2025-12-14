@@ -27,14 +27,22 @@ import java.util.Map;
  *     url: ${FRONTEND_URL}
  *   # 複数のリソースサーバー設定
  *   resource-servers:
- *     my-books:
- *       url: ${MY_BOOKS_SERVICE_URL}
+ *     service-01:
+ *       url: ${SERVICE_01_URL}
  *       timeout: 30
- *       path-prefix: ${MY_BOOKS_SERVICE_PATH_PREFIX}
- *     my-musics:
- *       url: ${MY_MUSICS_SERVICE_URL}
+ *       path-prefix: ${SERVICE_01_PATH_PREFIX}
+ *     service-02:
+ *       url: ${SERVICE_02_URL}
  *       timeout: 30
- *       path-prefix: ${MY_MUSICS_SERVICE_PATH_PREFIX}
+ *       path-prefix: ${SERVICE_02_PATH_PREFIX}
+ *     service-03:
+ *       url: ${SERVICE_03_URL}
+ *       timeout: 30
+ *       path-prefix: ${SERVICE_03_PATH_PREFIX}
+ *     service-04:
+ *       url: ${SERVICE_04_URL}
+ *       timeout: 30
+ *       path-prefix: ${SERVICE_04_PATH_PREFIX}
  * </pre>
  *
  * <h3>使用箇所</h3>

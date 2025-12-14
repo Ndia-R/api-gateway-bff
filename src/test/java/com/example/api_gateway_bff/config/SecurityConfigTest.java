@@ -28,12 +28,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
     "app.frontend.url=http://localhost:5173",
-    "app.resource-servers.my-books.url=http://localhost:9000",
-    "app.resource-servers.my-books.timeout=30",
-    "app.resource-servers.my-books.path-prefix=/my-books",
-    "app.resource-servers.my-musics.url=http://localhost:9001",
-    "app.resource-servers.my-musics.timeout=30",
-    "app.resource-servers.my-musics.path-prefix=/my-musics",
+    "app.resource-servers.service-01.url=http://localhost:9000",
+    "app.resource-servers.service-01.timeout=30",
+    "app.resource-servers.service-01.path-prefix=/service-01",
+    "app.resource-servers.service-02.url=http://localhost:9001",
+    "app.resource-servers.service-02.timeout=30",
+    "app.resource-servers.service-02.path-prefix=/service-02",
     "app.cors.allowed-origins=http://localhost:5173",
     "idp.post-logout-redirect-uri=http://localhost:5173/logout-complete",
     "rate-limit.enabled=false",

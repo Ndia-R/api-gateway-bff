@@ -52,19 +52,19 @@ public class TestConfig {
         ResourceServerProperties properties = new ResourceServerProperties();
         Map<String, ResourceServerProperties.ServerConfig> servers = new HashMap<>();
 
-        // my-books サービス設定
-        ResourceServerProperties.ServerConfig myBooksConfig = new ResourceServerProperties.ServerConfig();
-        myBooksConfig.setUrl("http://localhost:9000");
-        myBooksConfig.setTimeout(30);
-        myBooksConfig.setPathPrefix("/my-books");
-        servers.put("my-books", myBooksConfig);
+        // service-01 設定
+        ResourceServerProperties.ServerConfig service01Config = new ResourceServerProperties.ServerConfig();
+        service01Config.setUrl("http://localhost:9000");
+        service01Config.setTimeout(30);
+        service01Config.setPathPrefix("/service-01");
+        servers.put("service-01", service01Config);
 
-        // my-musics サービス設定
-        ResourceServerProperties.ServerConfig myMusicsConfig = new ResourceServerProperties.ServerConfig();
-        myMusicsConfig.setUrl("http://localhost:9001");
-        myMusicsConfig.setTimeout(30);
-        myMusicsConfig.setPathPrefix("/my-musics");
-        servers.put("my-musics", myMusicsConfig);
+        // service-02 設定
+        ResourceServerProperties.ServerConfig service02Config = new ResourceServerProperties.ServerConfig();
+        service02Config.setUrl("http://localhost:9001");
+        service02Config.setTimeout(30);
+        service02Config.setPathPrefix("/service-02");
+        servers.put("service-02", service02Config);
 
         properties.setResourceServers(servers);
         return properties;
@@ -79,8 +79,8 @@ public class TestConfig {
     public Map<String, WebClient> testWebClients() {
         Map<String, WebClient> webClients = new HashMap<>();
         WebClient webClient = WebClient.builder().build();
-        webClients.put("my-books", webClient);
-        webClients.put("my-musics", webClient);
+        webClients.put("service-01", webClient);
+        webClients.put("service-02", webClient);
         return webClients;
     }
 
