@@ -3,10 +3,10 @@
 # ====================================
 FROM eclipse-temurin:21-jdk-jammy AS development
 
-RUN apt-get update && \
-    apt-get install -y git curl sudo bash python3 && \
+RUN apt update && \
+    apt install -y git curl sudo bash python3 && \
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
+    apt install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 # vscodeユーザーを作成
