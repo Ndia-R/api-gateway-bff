@@ -10,8 +10,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.client.ClientAuthorizationRequiredException;
+import org.springframework.security.oauth2.client.OAuth2AuthorizeRequest;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
-import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriBuilder;
@@ -33,6 +35,7 @@ import java.util.Set;
  * <ul>
  *   <li>トークンをフロントエンドから隠蔽し、BFF側で管理</li>
  *   <li>認証済みユーザーのアクセストークンを自動的に付与</li>
+ *   <li><b>トークン自動リフレッシュ</b>: アクセストークン期限切れ時、リフレッシュトークンで自動更新</li>
  *   <li>未認証ユーザーのリクエストはトークンなしでリソースサーバーへ転送</li>
  *   <li>リソースサーバーのレスポンスを透過的に転送</li>
  *   <li>パスベースのルーティングで複数のバックエンドサービスに対応</li>
@@ -49,6 +52,15 @@ import java.util.Set;
  * すべてのリクエストを転送し、リソースサーバーが適切に権限チェックを実施する。
  * 認証が必要なエンドポイントにアクセスした場合、リソースサーバーが401を返す。</p>
  *
+ * <h3>トークン管理とリフレッシュ</h3>
+ * <p>{@code OAuth2AuthorizedClientManager}を使用してトークンを管理。</p>
+ * <ul>
+ *   <li>アクセストークン取得時、自動的に有効期限をチェック</li>
+ *   <li>期限切れの場合、リフレッシュトークンを使用して新しいアクセストークンを取得</li>
+ *   <li>新しいトークンはRedisセッションに自動保存</li>
+ *   <li>ユーザーは中断なくサービスを利用可能（透過的な処理）</li>
+ * </ul>
+ *
  * <h3>WebClient利用</h3>
  * <p>WebClientはWebClientConfigで定義されたサービスごとのBeanを使用。
  * コネクションプールの再利用によりパフォーマンスとリソース効率を向上。</p>
@@ -60,7 +72,7 @@ import java.util.Set;
 public class ApiProxyController {
 
     private final Map<String, WebClient> webClients;
-    private final OAuth2AuthorizedClientRepository authorizedClientRepository;
+    private final OAuth2AuthorizedClientManager authorizedClientManager;
     private final ResourceServerProperties resourceServerProperties;
 
     /**
@@ -211,16 +223,32 @@ public class ApiProxyController {
         headersSpec = headersSpec.headers(h -> {
             // 認証済みの場合のみアクセストークンを付与
             if (isAuthenticated && authentication != null) {
-                OAuth2AuthorizedClient client = authorizedClientRepository.loadAuthorizedClient(
-                    "idp",
-                    authentication,
-                    request
-                );
+                try {
+                    // OAuth2AuthorizeRequestを構築
+                    // - principal: 認証情報
+                    // - attribute: HttpServletRequestをコンテキストとして渡す
+                    OAuth2AuthorizeRequest authorizeRequest = OAuth2AuthorizeRequest
+                        .withClientRegistrationId("idp")
+                        .principal(authentication)
+                        .attribute(HttpServletRequest.class.getName(), request)
+                        .build();
 
-                if (client != null && client.getAccessToken() != null) {
-                    h.setBearerAuth(client.getAccessToken().getTokenValue());
-                } else {
-                    log.warn("Authenticated user {} has no access token", authentication.getName());
+                    // OAuth2AuthorizedClientManagerでトークンを取得
+                    // - トークンが期限切れの場合、自動的にリフレッシュトークンを使用して更新
+                    // - 新しいトークンはRedisセッションに自動的に保存される
+                    OAuth2AuthorizedClient authorizedClient =
+                        authorizedClientManager.authorize(authorizeRequest);
+
+                    if (authorizedClient != null && authorizedClient.getAccessToken() != null) {
+                        h.setBearerAuth(authorizedClient.getAccessToken().getTokenValue());
+                    } else {
+                        log.warn("Authenticated user {} has no access token", authentication.getName());
+                    }
+                } catch (ClientAuthorizationRequiredException e) {
+                    // 認証が必要な場合（未認証ユーザー）はトークンなしでリクエストを転送
+                    // リソースサーバー側で401を返す
+                    log.debug("Client authorization required for user {}, forwarding without token",
+                        authentication.getName());
                 }
             }
 

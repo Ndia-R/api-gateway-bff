@@ -23,18 +23,27 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 
 2. **PKCE対応**: Authorization Code with PKCEによるセキュアなOAuth2認証
 
-3. **最小構成**: 19ファイルで構成された、保守しやすいシンプルな設計
+3. **トークン自動リフレッシュ**: OAuth2AuthorizedClientManagerによるシームレスなトークン管理
+   - アクセストークン期限切れ時、自動的にリフレッシュトークンで更新
+   - ユーザーに再ログインを強制せず、透過的にセッションを維持
+   - Spring Security公式推奨のベストプラクティス実装
+
+4. **認証後リダイレクト機能**: `return_to` パラメータで認証後の復帰先を指定可能
+   - オープンリダイレクト脆弱性対策実装済み
+   - セッション管理による安全なリダイレクト先保存
+
+5. **最小構成**: 20ファイルで構成された、保守しやすいシンプルな設計
    - 未使用のクラス・メソッドは一切なし
    - Spring Boot自動設定を最大限活用
    - 型安全な設定管理（@ConfigurationProperties）
 
-4. **完全なCSRF保護**: CookieベースのCSRFトークンで状態変更操作を保護
+6. **完全なCSRF保護**: CookieベースのCSRFトークンで状態変更操作を保護
 
-5. **OpenID Connect準拠**: RP-Initiated Logoutによる確実なIDプロバイダーセッション無効化
+7. **OpenID Connect準拠**: RP-Initiated Logoutによる確実なIDプロバイダーセッション無効化
 
-6. **権限制御の委譲**: BFFは認証とトークン管理に専念、権限制御はリソースサーバーで実施
+8. **権限制御の委譲**: BFFは認証とトークン管理に専念、権限制御はリソースサーバーで実施
 
-7. **レート制限**: Bucket4j + Redisによる分散レート制限でブルートフォース攻撃やDDoSを軽減
+9. **レート制限**: Bucket4j + Redisによる分散レート制限でブルートフォース攻撃やDDoSを軽減
 
 ## アーキテクチャ
 
@@ -56,7 +65,7 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
     └─ データ処理
 ```
 
-### 主要コンポーネント（最小構成・19ファイル）
+### 主要コンポーネント（最小構成・20ファイル）
 
 #### アプリケーション
 - **ApiGatewayBffApplication**: メインクラス
@@ -66,7 +75,8 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 - **WebClientConfig**: サービスごとのWebClient設定（コネクションプール最適化）
 - **CsrfCookieFilter**: CSRF Cookie自動設定フィルター
 - **RedisConfig**: Spring Session Data Redis設定
-- **SecurityConfig**: Spring Security設定（PKCE、CSRF保護、CORS、フィルターチェーン例外処理）
+- **SecurityConfig**: Spring Security設定（PKCE、CSRF保護、CORS、フィルターチェーン例外処理、認証後リダイレクト）
+- **CustomAuthorizationRequestResolver**: カスタムOAuth2認可リクエストリゾルバー（PKCE + return_to保存）
 - **RateLimitConfig**: レート制限設定（Bucket4j + Redis）
 
 #### フィルター (filter/)
@@ -100,9 +110,45 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 | メソッド | パス | 説明 | レスポンス |
 |---------|------|------|-----------|
 | GET | `/bff/auth/login` | 認証状態確認・OAuth2フロー開始 | リダイレクト |
+| GET | `/bff/auth/login?return_to=/my-reviews` | 認証後に指定URLへリダイレクト | リダイレクト |
 | POST | `/bff/auth/logout` | 通常ログアウト（BFFセッションのみクリア） | `LogoutResponse` |
 | POST | `/bff/auth/logout?complete=true` | 完全ログアウト（IDプロバイダーセッションも無効化） | `LogoutResponse` |
 | GET | `/actuator/health` | ヘルスチェック | Spring Boot Actuator標準レスポンス |
+
+#### `return_to` パラメータ（認証後リダイレクト機能）
+
+**概要:**
+- フロントエンドから `return_to` パラメータで認証後の復帰先URL（例: `/my-reviews`）を指定できます
+- OAuth2認証完了後、BFFがフロントエンドに `/auth-callback?return_to=/my-reviews` の形式でリダイレクトします
+
+**動作フロー:**
+
+1. **未認証ユーザーの場合:**
+```
+フロントエンド → /bff/auth/login?return_to=/my-reviews
+    ↓
+Spring Security → CustomAuthorizationRequestResolver
+    ↓ (return_toをセッションに保存)
+OAuth2認証フロー → IdPログイン画面
+    ↓
+認証成功 → authenticationSuccessHandler
+    ↓ (セッションからreturn_toを取得)
+フロントエンド ← /auth-callback?return_to=/my-reviews
+```
+
+2. **認証済みユーザーの場合:**
+```
+フロントエンド → /bff/auth/login?return_to=/my-reviews
+    ↓
+AuthController.login()
+    ↓
+フロントエンド ← /auth-callback?return_to=/my-reviews (即座にリダイレクト)
+```
+
+**セキュリティ:**
+- オープンリダイレクト脆弱性対策実装済み
+- 許可されたホスト（localhost、フロントエンドホスト）または相対パスのみ許可
+- 不正なURLは自動的にブロックされ、デフォルトの `/auth-callback` にリダイレクト
 
 ### APIプロキシエンドポイント（パスベースルーティング）
 

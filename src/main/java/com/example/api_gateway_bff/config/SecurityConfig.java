@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -17,13 +19,25 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import com.example.api_gateway_bff.filter.FilterChainExceptionHandler;
 import com.example.api_gateway_bff.filter.RateLimitFilter;
 
-import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
-import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProvider;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProviderBuilder;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
+import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.savedrequest.SavedRequest;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import jakarta.servlet.http.HttpSession;
 
 /**
  * Spring Security設定クラス
@@ -49,6 +63,7 @@ import java.util.Set;
  */
 @Configuration
 @EnableWebSecurity
+@Slf4j
 public class SecurityConfig {
 
     @Autowired
@@ -77,13 +92,15 @@ public class SecurityConfig {
      * </ol>
      *
      * @param http Spring SecurityのHttpSecurity設定オブジェクト
-     * @param pkceResolver PKCE対応のOAuth2認可リクエストリゾルバ
+     * @param clientRegistrationRepository OAuth2クライアント登録情報
      * @return 構築されたSecurityFilterChain
      * @throws Exception 設定エラー時
      */
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, OAuth2AuthorizationRequestResolver pkceResolver)
-        throws Exception {
+    public SecurityFilterChain filterChain(
+        HttpSecurity http,
+        ClientRegistrationRepository clientRegistrationRepository
+    ) throws Exception {
 
         // ═══════════════════════════════════════════════════════════════
         // フィルターチェーン例外ハンドラー: 最初に追加
@@ -165,9 +182,13 @@ public class SecurityConfig {
             // ═══════════════════════════════════════════════════════════════
             .oauth2Login(
                 oauth2 -> oauth2
-                    // 認可エンドポイント設定: PKCE対応のリゾルバを使用
-                    // code_challenge/code_verifierを自動生成
-                    .authorizationEndpoint(authz -> authz.authorizationRequestResolver(pkceResolver))
+                    // 認可エンドポイント設定: カスタムリゾルバーを使用（PKCE + return_to保存）
+                    // code_challenge/code_verifierを自動生成し、return_toをセッションに保存
+                    .authorizationEndpoint(
+                        authz -> authz.authorizationRequestResolver(
+                            customAuthorizationRequestResolver(clientRegistrationRepository)
+                        )
+                    )
 
                     // リダイレクションエンドポイント: IdPからのコールバックを受け取るパス
                     .redirectionEndpoint(redirection -> redirection.baseUri("/bff/login/oauth2/code/*"))
@@ -191,10 +212,18 @@ public class SecurityConfig {
     /**
      * OAuth2認証成功後のカスタムハンドラー
      *
-     * <p>IdPでの認証完了後、このハンドラーがフロントエンドにリダイレクトします。</p>
+     * <p>IdPでの認証完成後、このハンドラーがフロントエンドにリダイレクトします。</p>
+     *
+     * <p><b>認証後のリダイレクト先機能（return_toパラメータ）:</b></p>
+     * <ul>
+     *   <li>セッションに保存された<code>redirect_after_login</code>（復帰先URL）を取得</li>
+     *   <li><code>/auth-callback?return_to=XXX</code>形式でフロントエンドにリダイレクト</li>
+     *   <li>セキュリティ検証: <code>return_to</code>が安全なURL（相対パスまたは許可されたホスト）であるかチェック</li>
+     *   <li>使用後はセッションから削除</li>
+     * </ul>
      *
      * <p><b>オープンリダイレクト脆弱性対策:</b>
-     * <code>continue</code> パラメータで指定されたリダイレクト先が、
+     * <code>return_to</code>パラメータで指定されたリダイレクト先が、
      * 安全なURL（同一ホストまたは許可されたホスト）であるかを検証します。</p>
      *
      * @return OAuth2認証成功ハンドラー
@@ -202,16 +231,71 @@ public class SecurityConfig {
     @Bean
     public AuthenticationSuccessHandler authenticationSuccessHandler() {
         return (request, response, authentication) -> {
+            log.info("=== OAuth2 Authentication Success ===");
+
+            HttpSession session = request.getSession(false);
+            if (session == null) {
+                log.error("Session is null after authentication!");
+                response.sendRedirect(frontendUrl + "/auth-callback");
+                return;
+            }
+
+            String returnTo = null;
+
+            // 1. まず、明示的に保存されたredirect_after_loginを確認
+            returnTo = (String) session.getAttribute("redirect_after_login");
+            if (returnTo != null) {
+                session.removeAttribute("redirect_after_login");
+                log.info("Found explicit redirect_after_login: {}", returnTo);
+            }
+
+            // 2. 明示的なreturn_toがない場合、Spring SecurityのSavedRequestから取得
+            if (returnTo == null) {
+                HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
+                SavedRequest savedRequest = requestCache.getRequest(request, response);
+
+                if (savedRequest != null) {
+                    String savedUrl = savedRequest.getRedirectUrl();
+                    log.info("Found SavedRequest URL: {}", savedUrl);
+
+                    // SavedRequestから元のリクエストのクエリパラメータを抽出
+                    // 注意: URI.getQuery()はURLデコードを行うため、エンコードされた&(%26)が&に変換されてしまう
+                    // そのため、URLから直接クエリ文字列を抽出する
+                    int queryStart = savedUrl.indexOf('?');
+                    if (queryStart != -1 && savedUrl.contains("return_to=")) {
+                        String query = savedUrl.substring(queryStart + 1);
+
+                        // クエリパラメータを & で分割
+                        // return_to の値に含まれる %26 はエンコード済みなので & とは区別される
+                        String[] queryParams = query.split("&");
+
+                        for (String param : queryParams) {
+                            if (param.startsWith("return_to=")) {
+                                // return_to= の後ろの値を取得してデコード
+                                String encodedValue = param.substring("return_to=".length());
+                                returnTo = java.net.URLDecoder.decode(encodedValue, StandardCharsets.UTF_8);
+                                log.info("Extracted return_to from SavedRequest: {}", returnTo);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             // デフォルトのリダイレクト先: フロントエンドの認証コールバックページ
             String redirectUrl = frontendUrl + "/auth-callback";
 
-            // continueパラメータがある場合はそれを検証して優先
-            String continueParam = request.getParameter("continue");
-            if (continueParam != null && !continueParam.isBlank() && isUrlSafe(continueParam)) {
-                redirectUrl = continueParam;
+            // returnToがある場合は、セキュリティ検証してクエリパラメータとして追加
+            if (returnTo != null && !returnTo.isBlank()) {
+                if (isUrlSafe(returnTo)) {
+                    redirectUrl += "?return_to=" + URLEncoder.encode(returnTo, StandardCharsets.UTF_8);
+                    log.info("Final return_to: {}", returnTo);
+                } else {
+                    log.warn("Unsafe redirect attempt blocked: {}", returnTo);
+                }
             }
 
-            // フロントエンドにリダイレクト
+            log.info("Redirecting to: {}", redirectUrl);
             response.sendRedirect(redirectUrl);
         };
     }
@@ -231,8 +315,10 @@ public class SecurityConfig {
                 return false;
             }
 
-            // 許可するホストのリスト
-            final Set<String> allowedHosts = Set.of("localhost", frontendHost);
+            // 許可するホストのリスト（重複を自動的に除外）
+            final Set<String> allowedHosts = Stream.of("localhost", frontendHost)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
 
             URI redirectUri = new URI(url);
 
@@ -273,12 +359,90 @@ public class SecurityConfig {
     // }
 
     /**
-     * PKCE対応のOAuth2認可リクエストリゾルバ
+     * OAuth2認可クライアントマネージャー（トークン自動リフレッシュ対応）
      *
-     * <p>PKCE (Proof Key for Code Exchange) は、Authorization Code Flowの
-     * セキュリティを強化するための仕組みです。</p>
+     * <p>このBeanは、OAuth2クライアントの認可状態を管理し、以下の機能を提供します：</p>
+     * <ul>
+     *   <li><b>トークン自動リフレッシュ</b>: アクセストークンの有効期限が切れた際、リフレッシュトークンを使用して自動更新</li>
+     *   <li><b>認可コードフロー対応</b>: Authorization Code Flowによる初回トークン取得</li>
+     *   <li><b>クライアントクレデンシャル対応</b>: サービス間通信用のトークン取得（必要に応じて）</li>
+     * </ul>
      *
-     * <h3>PKCEの仕組み:</h3>
+     * <h3>トークンリフレッシュの動作:</h3>
+     * <ol>
+     *   <li><b>トークン取得時</b>: {@code authorizedClientManager.authorize()}を呼び出し</li>
+     *   <li><b>期限チェック</b>: アクセストークンの有効期限を自動的にチェック</li>
+     *   <li><b>自動リフレッシュ</b>: 期限切れの場合、リフレッシュトークンを使用して新しいアクセストークンを取得</li>
+     *   <li><b>Redis保存</b>: 新しいトークンをセッションに紐づけてRedisに保存</li>
+     * </ol>
+     *
+     * <h3>セキュリティ上の利点:</h3>
+     * <ul>
+     *   <li>ユーザーに再ログインを強制せず、シームレスなセッション維持</li>
+     *   <li>リフレッシュトークンは常にBFF（サーバー側）で管理され、フロントエンドに一切公開されない</li>
+     *   <li>トークンリフレッシュは透過的に処理され、ユーザーエクスペリエンスに影響なし</li>
+     * </ul>
+     *
+     * <h3>使用例:</h3>
+     * <pre>
+     * // ApiProxyControllerでの使用
+     * OAuth2AuthorizeRequest authorizeRequest = OAuth2AuthorizeRequest
+     *     .withClientRegistrationId("idp")
+     *     .principal(authentication)
+     *     .attribute(HttpServletRequest.class.getName(), request)
+     *     .build();
+     *
+     * OAuth2AuthorizedClient authorizedClient =
+     *     authorizedClientManager.authorize(authorizeRequest);
+     *
+     * // トークンが期限切れの場合、自動的にリフレッシュされる
+     * String accessToken = authorizedClient.getAccessToken().getTokenValue();
+     * </pre>
+     *
+     * @param clientRegistrationRepository OAuth2クライアント登録情報
+     * @param authorizedClientRepository OAuth2認可クライアント保存先（Redisセッション連携）
+     * @return OAuth2認可クライアントマネージャー
+     */
+    @Bean
+    public OAuth2AuthorizedClientManager authorizedClientManager(
+        ClientRegistrationRepository clientRegistrationRepository,
+        OAuth2AuthorizedClientRepository authorizedClientRepository
+    ) {
+        // OAuth2認可プロバイダーの構築
+        // - authorizationCode(): Authorization Code Flowによる初回トークン取得
+        // - refreshToken(): リフレッシュトークンによる自動トークン更新
+        // - clientCredentials(): クライアントクレデンシャルフロー（サービス間通信用、必要に応じて）
+        OAuth2AuthorizedClientProvider authorizedClientProvider = OAuth2AuthorizedClientProviderBuilder.builder()
+            .authorizationCode()
+            .refreshToken()
+            .clientCredentials()
+            .build();
+
+        // DefaultOAuth2AuthorizedClientManagerの構築
+        // - clientRegistrationRepository: OAuth2クライアント情報（application.ymlから読み込み）
+        // - authorizedClientRepository: トークン保存先（Spring Session + Redisで管理）
+        DefaultOAuth2AuthorizedClientManager authorizedClientManager = new DefaultOAuth2AuthorizedClientManager(
+            clientRegistrationRepository,
+            authorizedClientRepository
+        );
+
+        // 認可プロバイダーを設定
+        authorizedClientManager.setAuthorizedClientProvider(authorizedClientProvider);
+
+        return authorizedClientManager;
+    }
+
+    /**
+     * カスタムOAuth2認可リクエストリゾルバー（PKCE + return_to保存）
+     *
+     * <p>このリゾルバーは以下の機能を提供します：</p>
+     * <ul>
+     *   <li><b>PKCE対応</b>: code_challenge/code_verifierを自動生成</li>
+     *   <li><b>return_to保存</b>: 未認証時のリダイレクト先URLをセッションに保存</li>
+     * </ul>
+     *
+     * <h3>PKCE (Proof Key for Code Exchange):</h3>
+     * <p>Authorization Code Flowのセキュリティを強化する仕組み。</p>
      * <ol>
      *   <li><b>code_verifier生成</b>: ランダムな文字列を生成（43-128文字）</li>
      *   <li><b>code_challenge生成</b>: <code>BASE64URL(SHA256(code_verifier))</code></li>
@@ -286,41 +450,31 @@ public class SecurityConfig {
      *   <li><b>トークン交換</b>: code_verifierをIdPに送信して検証</li>
      * </ol>
      *
-     * <h3>防止できる攻撃:</h3>
-     * <ul>
-     *   <li><b>認可コード盗聴攻撃</b>: 認可コードを盗んでも、code_verifierがないとトークン取得不可</li>
-     *   <li><b>リダイレクトURI改ざん</b>: 正規のアプリケーションのみがトークン取得可能</li>
-     * </ul>
+     * <h3>return_to保存機能:</h3>
+     * <p>未認証ユーザーが<code>/bff/auth/login?return_to=/my-reviews</code>にアクセスした際、
+     * OAuth2フロー開始前に<code>return_to</code>をセッションに保存し、認証完了後にフロントエンドに渡します。</p>
      *
-     * <h3>生成されるパラメータ:</h3>
+     * <h3>動作例:</h3>
      * <pre>
-     * 認可リクエスト:
-     *   code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
-     *   code_challenge_method=S256
-     *
-     * トークン交換リクエスト:
-     *   code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+     * 1. フロント → /bff/auth/login?return_to=/my-reviews
+     * 2. Spring Security → このリゾルバーを呼び出し
+     * 3. リゾルバー → return_toをセッションに保存
+     * 4. OAuth2フロー開始 → Keycloak認証
+     * 5. 認証成功 → authenticationSuccessHandler
+     * 6. セッションからreturn_toを取得 → /auth-callback?return_to=/my-reviews
      * </pre>
      *
      * @param clientRegistrationRepository OAuth2クライアント登録情報
-     * @return PKCE対応のOAuth2認可リクエストリゾルバ
+     * @return カスタムOAuth2認可リクエストリゾルバー
      */
     @Bean
-    public OAuth2AuthorizationRequestResolver pkceResolver(ClientRegistrationRepository clientRegistrationRepository) {
-        // デフォルトのリゾルバを作成
-        // 第2引数: OAuth2認証を開始するパス（/oauth2/authorization/{registrationId}）
-        DefaultOAuth2AuthorizationRequestResolver resolver = new DefaultOAuth2AuthorizationRequestResolver(
+    public OAuth2AuthorizationRequestResolver customAuthorizationRequestResolver(
+        ClientRegistrationRepository clientRegistrationRepository
+    ) {
+        return new CustomAuthorizationRequestResolver(
             clientRegistrationRepository,
             "/oauth2/authorization"
         );
-
-        // PKCEカスタマイザーを適用
-        // code_challengeとcode_verifierを自動生成し、認可リクエストに追加
-        resolver.setAuthorizationRequestCustomizer(
-            OAuth2AuthorizationRequestCustomizers.withPkce()
-        );
-
-        return resolver;
     }
 
 }

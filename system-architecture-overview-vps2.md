@@ -348,8 +348,9 @@ sequenceDiagram
 
 **重要なポイント:**
 
-- **自動処理**: Spring Security OAuth2 Clientが`OAuth2AuthorizedClientRepository.loadAuthorizedClient()`実行時に自動的にトークン期限をチェックし、必要に応じてリフレッシュを実行
+- **自動処理**: Spring Security OAuth2 Clientが`OAuth2AuthorizedClientManager.authorize()`実行時に自動的にトークン期限をチェックし、必要に応じてリフレッシュを実行
 - **VPS間通信の最小化**: Access Tokenが有効な間はVPS1（Keycloak）への通信は発生せず、期限切れ時のみVPS間通信が発生
 - **透過的な処理**: フロントエンドはトークンリフレッシュを意識する必要がなく、通常のAPIリクエストと同様に処理される
 - **セキュリティ**: Refresh Tokenは常にBFFのRedis内に保持され、フロントエンドには一切公開されない
 - **トークンローテーション**: Keycloak設定（`refreshTokenMaxReuse: 0`）により、リフレッシュ時に新しいRefresh Tokenが発行され、古いトークンは即座に無効化される。これによりトークン漏洩時のリスクを最小化し、Replay攻撃を防止
+- **実装詳細**: `OAuth2AuthorizedClientManager`は`OAuth2AuthorizedClientProviderBuilder`で`refreshToken()`プロバイダーを設定することで、トークンリフレッシュ機能が有効化される（[SecurityConfig.java](src/main/java/com/example/api_gateway_bff/config/SecurityConfig.java)参照）
