@@ -62,7 +62,8 @@
       "Bash(xargs -r kill -9)",
       "Bash(code --list-extensions)",
       "Bash(redis-cli -h redis FLUSHALL)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(git show:*)"
     ],
     "deny": [],
     "ask": []

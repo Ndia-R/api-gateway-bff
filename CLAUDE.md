@@ -76,7 +76,7 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 - **CsrfCookieFilter**: CSRF Cookie自動設定フィルター
 - **RedisConfig**: Spring Session Data Redis設定
 - **SecurityConfig**: Spring Security設定（PKCE、CSRF保護、CORS、フィルターチェーン例外処理、認証後リダイレクト）
-- **CustomAuthorizationRequestResolver**: カスタムOAuth2認可リクエストリゾルバー（PKCE + return_to保存）
+- **CustomAuthorizationRequestResolver**: カスタムOAuth2認可リクエストリゾルバー（PKCE + return_to保存 + マルチアプリ対応）
 - **RateLimitConfig**: レート制限設定（Bucket4j + Redis）
 
 #### フィルター (filter/)
@@ -115,34 +115,38 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 | POST | `/bff/auth/logout?complete=true` | 完全ログアウト（IDプロバイダーセッションも無効化） | `LogoutResponse` |
 | GET | `/actuator/health` | ヘルスチェック | Spring Boot Actuator標準レスポンス |
 
-#### `return_to` パラメータ（認証後リダイレクト機能）
+#### `return_to` パラメータ（認証後リダイレクト機能 + マルチアプリ対応）
 
 **概要:**
 - フロントエンドから `return_to` パラメータで認証後の復帰先URL（例: `/my-reviews`）を指定できます
-- OAuth2認証完了後、BFFがフロントエンドに `/auth-callback?return_to=/my-reviews` の形式でリダイレクトします
+- **マルチアプリ対応**: Refererヘッダーから各アプリのベースパス（例: `/my-books`）を自動抽出
+- OAuth2認証完了後、BFFがフロントエンドに `/my-books/auth-callback?return_to=/my-reviews` の形式でリダイレクトします
 
 **動作フロー:**
 
-1. **未認証ユーザーの場合:**
+1. **未認証ユーザーの場合（マルチアプリ対応）:**
 ```
-フロントエンド → /bff/auth/login?return_to=/my-reviews
+フロントエンド(my-books) → /bff/auth/login?return_to=/my-reviews
+Referer: https://localhost/my-books
     ↓
 Spring Security → CustomAuthorizationRequestResolver
-    ↓ (return_toをセッションに保存)
+    ↓ (Refererから/my-booksを抽出 → original_frontend_url = "https://localhost/my-books")
+    ↓ (return_toもセッションに保存)
 OAuth2認証フロー → IdPログイン画面
     ↓
 認証成功 → authenticationSuccessHandler
-    ↓ (セッションからreturn_toを取得)
-フロントエンド ← /auth-callback?return_to=/my-reviews
+    ↓ (セッションからoriginal_frontend_urlとreturn_toを取得)
+フロントエンド ← /my-books/auth-callback?return_to=/my-reviews
 ```
 
-2. **認証済みユーザーの場合:**
+2. **認証済みユーザーの場合（マルチアプリ対応）:**
 ```
-フロントエンド → /bff/auth/login?return_to=/my-reviews
+フロントエンド(my-books) → /bff/auth/login?return_to=/my-reviews
+Referer: https://localhost/my-books
     ↓
 AuthController.login()
-    ↓
-フロントエンド ← /auth-callback?return_to=/my-reviews (即座にリダイレクト)
+    ↓ (Refererから/my-booksを抽出)
+フロントエンド ← /my-books/auth-callback?return_to=/my-reviews (即座にリダイレクト)
 ```
 
 **セキュリティ:**

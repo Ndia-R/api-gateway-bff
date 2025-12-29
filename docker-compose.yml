@@ -26,6 +26,8 @@ services:
       IDP_REDIRECT_URI: https://${VPS_HOSTNAME}/bff/login/oauth2/code/idp
       IDP_POST_LOGOUT_REDIRECT_URI: https://${VPS_HOSTNAME}/logout-complete
       FRONTEND_URL: https://${VPS_HOSTNAME}
+      # CORS設定（マルチアプリケーション対応）
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://${VPS_HOSTNAME}}
       # Application Configuration
       SERVICE_01_URL: ${SERVICE_01_URL}
       SERVICE_01_PATH_PREFIX: ${SERVICE_01_PATH_PREFIX}

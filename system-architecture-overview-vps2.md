@@ -76,7 +76,7 @@ graph LR
 
 ### 2-1. マルチアプリケーション構成例
 
-複数の独立したアプリケーション（例: my-books、my-music）を同一のVPS2上で稼働させる場合の構成図です。各アプリケーションは専用のバックエンドとDBを持ちますが、認証機能（BFF）とRedisは共通で利用します。
+複数の独立したアプリケーション（例: my-books、my-music）を同一の VPS2 上で稼働させる場合の構成図です。各アプリケーションは専用のバックエンドと DB を持ちますが、認証機能（BFF）と Redis は共通で利用します。
 
 ```mermaid
 graph LR
@@ -160,9 +160,9 @@ graph LR
 
 この構成により、以下のメリットが得られます：
 
-- **認証基盤の統一**: 1つのBFFで複数アプリの認証を一元管理
+- **認証基盤の統一**: 1 つの BFF で複数アプリの認証を一元管理
 - **リソースの効率化**: Redis や BFF を共有することでリソース消費を削減
-- **アプリケーションの独立性**: 各アプリは専用のバックエンドとDBを持つため、データとロジックが分離
+- **アプリケーションの独立性**: 各アプリは専用のバックエンドと DB を持つため、データとロジックが分離
 - **スケーラビリティ**: アプリケーション単位での個別のスケーリングが可能
 
 ### 2-2. 実装上のプロジェクト名とコンテナ名
@@ -171,42 +171,42 @@ graph LR
 
 #### VPS1 (vsv-crystal.skygroup.local)
 
-| プロジェクト名 | 図中の表記 | コンテナ名 | 役割 |
-|-----------|--------------|-----------|------|
-| `vsv-crystal` | Nginx | `nginx-edge` | エッジリバースプロキシ（HTTPS終端、認証・レジストリルーティング） |
-|  | Keycloak | `keycloak` | OIDC認証プロバイダー |
-|  | DB | `keycloak-db` | Keycloak専用データベース |
-|  | Registry | `registry` | Dockerイメージレジストリ |
+| プロジェクト名 | 図中の表記 | コンテナ名    | 役割                                                               |
+| -------------- | ---------- | ------------- | ------------------------------------------------------------------ |
+| `vsv-crystal`  | Nginx      | `nginx-edge`  | エッジリバースプロキシ（HTTPS 終端、認証・レジストリルーティング） |
+|                | Keycloak   | `keycloak`    | OIDC 認証プロバイダー                                              |
+|                | DB         | `keycloak-db` | Keycloak 専用データベース                                          |
+|                | Registry   | `registry`    | Docker イメージレジストリ                                          |
 
 #### VPS2 (vsv-emerald.skygroup.local) - シングルアプリケーション構成
 
-| プロジェクト名 | 図中の表記 | コンテナ名 | 役割 |
-|-----------|--------------|-----------|------|
-| `vsv-emerald` | Nginx | `nginx-edge` | エッジリバースプロキシ（HTTPS終端、アプリケーションルーティング） |
-| `my-books-frontend` | APP | `my-books-frontend` | フロントエンド（SPA） |
-| `my-books-api` | API | `my-books-api` | リソースサーバー（REST API） |
-|  | DB | `my-books-db` | アプリケーションデータベース |
-| `api-gateway-bff` | BFF | `api-gateway-bff` | 認証ゲートウェイ・APIプロキシ |
-|  | Redis | `redis` | セッションストレージ（BFFトークン管理） |
+| プロジェクト名      | 図中の表記 | コンテナ名          | 役割                                                               |
+| ------------------- | ---------- | ------------------- | ------------------------------------------------------------------ |
+| `vsv-emerald`       | Nginx      | `nginx-edge`        | エッジリバースプロキシ（HTTPS 終端、アプリケーションルーティング） |
+| `my-books-frontend` | APP        | `my-books-frontend` | フロントエンド（SPA）                                              |
+| `my-books-api`      | API        | `my-books-api`      | リソースサーバー（REST API）                                       |
+|                     | DB         | `my-books-db`       | アプリケーションデータベース                                       |
+| `api-gateway-bff`   | BFF        | `api-gateway-bff`   | 認証ゲートウェイ・API プロキシ                                     |
+|                     | Redis      | `redis`             | セッションストレージ（BFF トークン管理）                           |
 
 ## 3. VPS1: 認証・レジストリサーバー (`vsv-crystal.skygroup.local`)
 
 インフラのコア機能、特に**認証認可**と**デプロイに必要なイメージ管理**を担います。
 
 - **コンテナ構成**
-  - **`nginx-edge`**: **エッジリバースプロキシ**。外部からのHTTPS/HTTPトラフィックを受け付ける**最前線の通信窓口**（ポート80/443を公開）。SSL終端とルーティングを担当し、以下のエンドポイントを提供：
-    - `/auth` → Keycloak（OIDC認証）
-    - `/v2` → Registry（Dockerイメージのpush/pull）
+  - **`nginx-edge`**: **エッジリバースプロキシ**。外部からの HTTPS/HTTP トラフィックを受け付ける**最前線の通信窓口**（ポート 80/443 を公開）。SSL 終端とルーティングを担当し、以下のエンドポイントを提供：
+    - `/auth` → Keycloak（OIDC 認証）
+    - `/v2` → Registry（Docker イメージの push/pull）
   - **`keycloak`**: **認証プロバイダー**。OpenID Connect (OIDC) プロトコルを提供。
   - **`keycloak-db`**: **Keycloak 専用のデータベース**。Keycloak が管理するユーザー情報、レルム設定、クライアント定義、セッション情報などを永続化するために利用されます。
-  - **`registry`**: **Docker イメージレジストリ**。アプリケーションイメージの保管と配布。nginx-edge経由でのみアクセス可能（内部ポート5000）。
+  - **`registry`**: **Docker イメージレジストリ**。アプリケーションイメージの保管と配布。nginx-edge 経由でのみアクセス可能（内部ポート 5000）。
 
 ## 4. VPS2: Web アプリケーションサーバー (`vsv-emerald.skygroup.local`)
 
 ユーザーに直接サービスを提供する、アプリケーションの実行環境です。
 
 - **コンテナ構成**
-  - **`nginx-edge`**: **エッジリバースプロキシ**。外部からのHTTPS/HTTPトラフィックを受け付ける**最前線の通信窓口**（ポート80/443を公開）。SSL終端とルーティングを担当し、リクエストを `frontend` やその他の内部サービスへ転送します。
+  - **`nginx-edge`**: **エッジリバースプロキシ**。外部からの HTTPS/HTTP トラフィックを受け付ける**最前線の通信窓口**（ポート 80/443 を公開）。SSL 終端とルーティングを担当し、リクエストを `frontend` やその他の内部サービスへ転送します。
   - **`xxx-frontend`**: **ユーザーインターフェース (UI)** を提供する内部サービス。クライアント側での**セッション管理**を担当。
   - **`xxx-api`**: アプリケーションの**メインビジネスロジック**を実行する API サービス。BFF からの有効なアクセストークンでのみアクセスを許可します。
   - **`xxx-db`**: アプリケーションデータの**永続化**を行うデータベース。
@@ -215,11 +215,222 @@ graph LR
     - Frontend からのリクエストを検証し、Backend へ転送する際の**Bearer トークン付与**を担当します。
   - **`redis`**: **BFF**が利用する**キャッシュ/データストア**。**アクセストークンとリフレッシュトークン**の保存・管理に使用されます。
 
+## 4-1. BFFのセキュリティ機能と主要機能
+
+BFF（Backend for Frontend）は、単なるAPIプロキシではなく、以下の重要なセキュリティ機能とユーザビリティ向上機能を提供します。
+
+### セキュリティ機能
+
+#### 🔐 PKCE (Proof Key for Code Exchange) 対応
+
+Authorization Code Flowのセキュリティを強化する仕組み。認可コードの盗聴攻撃を防止します。
+
+**動作原理:**
+
+1. BFFが`code_verifier`（ランダムな文字列43-128文字）を生成
+2. `code_challenge`を計算: `BASE64URL(SHA256(code_verifier))`
+3. 認可リクエスト時に`code_challenge`をKeycloakに送信
+4. トークン交換時に`code_verifier`をKeycloakに送信して検証
+
+**実装:** Spring Security標準の`OAuth2AuthorizationRequestCustomizers.withPkce()`を使用
+
+**参照:** [CustomAuthorizationRequestResolver.java](src/main/java/com/example/api_gateway_bff/config/CustomAuthorizationRequestResolver.java)
+
+---
+
+#### 🛡️ CSRF保護 (CookieベースCSRFトークン)
+
+POST/PUT/DELETE等の状態変更操作を保護し、クロスサイトリクエストフォージェリ攻撃を防止します。
+
+**仕組み:**
+
+- **CSRFトークンCookie**: `XSRF-TOKEN`（HttpOnly=false、JavaScriptから読み取り可能）
+- **CSRFトークンヘッダー**: フロントエンドはリクエスト時に`X-XSRF-TOKEN`ヘッダーにトークンを設定
+- **自動検証**: Spring Securityが自動的にトークンを検証
+
+**フロントエンド実装例:**
+
+```javascript
+const csrfToken = document.cookie
+  .split('; ')
+  .find((row) => row.startsWith('XSRF-TOKEN='))
+  ?.split('=')[1];
+
+fetch('/api/books', {
+  method: 'POST',
+  credentials: 'include',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-XSRF-TOKEN': csrfToken,
+  },
+  body: JSON.stringify({ title: '新しい本' }),
+});
+```
+
+**参照:** [SecurityConfig.java](src/main/java/com/example/api_gateway_bff/config/SecurityConfig.java), [CsrfCookieFilter.java](src/main/java/com/example/api_gateway_bff/config/CsrfCookieFilter.java)
+
+---
+
+#### ⏱️ レート制限 (Bucket4j + Redis)
+
+ブルートフォース攻撃やDDoS攻撃を軽減する分散レート制限機能。
+
+**レート制限ルール:**
+
+| エンドポイント       | 制限             | 識別方法     | 目的                                   |
+| -------------------- | ---------------- | ------------ | -------------------------------------- |
+| `/bff/auth/login`    | 30リクエスト/分  | IPアドレス   | ブルートフォース攻撃防止               |
+| `/api/**` (認証済み) | 200リクエスト/分 | セッションID | API乱用防止                            |
+| `/api/**` (未認証)   | 100リクエスト/分 | IPアドレス   | DoS攻撃防止（書籍検索等の公開API保護） |
+
+**除外エンドポイント（レート制限なし）:**
+
+- `/actuator/health` - 監視システムからのヘルスチェック
+- `/bff/login/oauth2/code/**` - Keycloakからのコールバック
+- `/oauth2/authorization/**` - OAuth2認証開始
+- `/bff/auth/logout` - ログアウト（セッション無効化済み）
+
+**技術詳細:**
+
+- **ライブラリ**: Bucket4j 8.7.0
+- **バックエンド**: Redis（Lettuce CAS方式）
+- **分散対応**: 複数BFFインスタンス間でレート制限状態を共有
+- **アルゴリズム**: Token Bucket（トークンバケット）
+
+**レート制限超過時のレスポンス:**
+
+```json
+{
+  "error": "TOO_MANY_REQUESTS",
+  "message": "リクエスト数が制限を超えました。しばらく待ってから再試行してください。",
+  "status": 429,
+  "path": "/bff/auth/login",
+  "timestamp": "2025-10-18 15:30:45"
+}
+```
+
+**参照:** [RateLimitConfig.java](src/main/java/com/example/api_gateway_bff/config/RateLimitConfig.java), [RateLimitFilter.java](src/main/java/com/example/api_gateway_bff/filter/RateLimitFilter.java)
+
+---
+
+### ユーザビリティ向上機能
+
+#### 🔄 認証後リダイレクト機能 (`return_to`パラメータ)
+
+未認証ユーザーが特定のページにアクセスした際、認証完了後に元のページに自動的に復帰する機能。
+
+**動作フロー:**
+
+**1. 未認証ユーザーの場合:**
+
+```
+フロントエンド → /bff/auth/login?return_to=/my-reviews
+    ↓
+Spring Security → CustomAuthorizationRequestResolver
+    ↓ (return_toをセッションに保存)
+OAuth2認証フロー → Keycloakログイン画面
+    ↓
+認証成功 → authenticationSuccessHandler
+    ↓ (セッションからreturn_toを取得)
+フロントエンド ← /auth-callback?return_to=/my-reviews
+```
+
+**2. 認証済みユーザーの場合:**
+
+```
+フロントエンド → /bff/auth/login?return_to=/my-reviews
+    ↓
+AuthController.login()
+    ↓
+フロントエンド ← /auth-callback?return_to=/my-reviews (即座にリダイレクト)
+```
+
+**セキュリティ対策:**
+
+- **オープンリダイレクト脆弱性対策**: `return_to`が安全なURL（相対パスまたは許可されたホスト）であるかを検証
+- **許可されたホスト**: localhost、フロントエンドホスト
+- 不正なURLは自動的にブロックされ、デフォルトの`/auth-callback`にリダイレクト
+
+**参照:** [CustomAuthorizationRequestResolver.java](src/main/java/com/example/api_gateway_bff/config/CustomAuthorizationRequestResolver.java), [SecurityConfig.java](src/main/java/com/example/api_gateway_bff/config/SecurityConfig.java), [AuthController.java](src/main/java/com/example/api_gateway_bff/controller/AuthController.java)
+
+---
+
+### インフラ機能
+
+#### 🔍 OIDC Discovery (自動メタデータ取得)
+
+`IDP_ISSUER_URI`から`/.well-known/openid-configuration`を自動取得し、複数のOIDC準拠IDプロバイダーに対応します。
+
+**対応IDプロバイダー:**
+
+| プロバイダー    | ISSUER_URI 例                                               |
+| --------------- | ----------------------------------------------------------- |
+| **Keycloak**    | `http://auth.localhost:8444/realms/test-user-realm`         |
+| **Auth0**       | `https://your-tenant.auth0.com`                             |
+| **Okta**        | `https://dev-12345678.okta.com/oauth2/default`              |
+| **Azure AD**    | `https://login.microsoftonline.com/{tenant-id}/v2.0`        |
+| **Google**      | `https://accounts.google.com`                               |
+| **AWS Cognito** | `https://cognito-idp.{region}.amazonaws.com/{user-pool-id}` |
+
+**利点:**
+
+- IDプロバイダーの切り替えが環境変数の変更のみで可能
+- エンドポイント（authorize, token, jwk, logout等）の個別指定が不要
+- Spring Securityが自動的にメタデータを検出・設定
+
+**参照:** [OidcMetadataClient.java](src/main/java/com/example/api_gateway_bff/client/OidcMetadataClient.java)
+
+---
+
+#### 🚦 パスベースルーティング (複数リソースサーバー対応)
+
+`/api/**`配下のリクエストをパスプレフィックスに基づいて複数のバックエンドサービスにルーティングします。
+
+**ルーティング例:**
+
+| フロントエンドリクエスト     | パスプレフィックス | 転送先                             |
+| ---------------------------- | ------------------ | ---------------------------------- |
+| `GET /api/my-books/list`     | `/my-books`        | `http://my-books-api:8080/list`    |
+| `POST /api/my-musics/search` | `/my-musics`       | `http://my-musics-api:8081/search` |
+
+**動作:**
+
+1. BFFがリクエストパスからプレフィックスを抽出
+2. `ResourceServerProperties`から対応するサービスを選択
+3. パスプレフィックスを削除してターゲットパスを生成（`/my-books/list` → `/list`）
+4. 認証済みの場合、アクセストークンを`Authorization: Bearer <token>`ヘッダーに付与
+5. 選択したリソースサーバーにリクエストを転送
+6. レスポンスを透過的にフロントエンドに返却
+
+**設定例 (application.yml):**
+
+```yaml
+resource-servers:
+  my-books:
+    url: http://my-books-api:8080
+    path-prefix: /my-books
+    timeout: 30
+  my-musics:
+    url: http://my-musics-api:8081
+    path-prefix: /my-musics
+    timeout: 30
+```
+
+**利点:**
+
+- 新しいリソースサーバーの追加が設定ファイルの変更のみで可能
+- BFFコードの変更不要
+- 権限制御はリソースサーバー側で実施（BFFは認証のみ担当）
+
+**参照:** [ApiProxyController.java](src/main/java/com/example/api_gateway_bff/controller/ApiProxyController.java), [ResourceServerProperties.java](src/main/java/com/example/api_gateway_bff/config/ResourceServerProperties.java)
+
+---
+
 ## 5. 認証・データアクセスフロー（Keycloak と BFF 連携）
 
 本システムは、OIDC 認可コードフローと BFF を必須とするデータアクセスにより、機密性の高いトークンをクライアントに露出させないセキュアな設計を採用しています。
 
-### 5-1. ユーザー認証フロー (OIDC Code Flow)
+### 5-1. ユーザー認証フロー (OIDC Code Flow with PKCE)
 
 Keycloak と BFF が連携し、BFF 内の Redis にトークンを保存してセッションを確立するまでの流れをシーケンス図で示します。
 
@@ -239,7 +450,8 @@ sequenceDiagram
     BFF->>Browser: 2. 認証画面へリダイレクト
     deactivate BFF
 
-    Browser->>Keycloak: 3. 認可リクエスト (code, redirect_uri=BFF)
+    Browser->>Keycloak: 3. 認可リクエスト (code_challenge, redirect_uri=BFF)
+    Note over Browser,Keycloak: PKCE: code_challengeをKeycloakに送信
     Keycloak-->>Browser: 4. ユーザー認証 (ID/PW入力)
     Keycloak->>Browser: 5. 認可コード付与 & コールバックURLへリダイレクト
 
@@ -247,7 +459,8 @@ sequenceDiagram
     Nginx_V2->>BFF: コールバックURLへルーティング
 
     activate BFF
-    BFF->>Keycloak: 7. トークン交換要求 (認可コード, Client Secret)
+    BFF->>Keycloak: 7. トークン交換要求 (認可コード, Client Secret, code_verifier)
+    Note over BFF,Keycloak: PKCE: code_verifierで検証
     Keycloak-->>BFF: 8. トークン発行 (Access/Refresh/ID Token)
 
     BFF->>Redis: 9. Access/Refresh TokenをセッションIDと紐づけて保存
@@ -260,6 +473,17 @@ sequenceDiagram
 
     Browser->>Nginx_V2: 11. 認証完了後のリクエスト (セッションクッキー付与)
 ```
+
+**PKCE (Proof Key for Code Exchange) の役割:**
+
+このフローでは、認可コードの盗聴攻撃を防止するため、PKCEが適用されています：
+
+1. **Step 2**: BFFが`code_verifier`（ランダムな文字列）を生成し、`code_challenge`を計算
+2. **Step 3**: `code_challenge`をKeycloakに送信（認可リクエスト）
+3. **Step 7**: `code_verifier`をKeycloakに送信（トークン交換）
+4. Keycloakが`code_verifier`から`code_challenge`を再計算し、Step 3で受け取った値と一致するかを検証
+
+これにより、認可コードが盗聴されても、`code_verifier`を持たない攻撃者はトークンを取得できません。
 
 ---
 
@@ -298,7 +522,7 @@ sequenceDiagram
 
 ### 5-3. トークンリフレッシュフロー
 
-Access Tokenの有効期限が切れた際、BFFが自動的にRefresh Tokenを使用して新しいAccess Tokenを取得する流れをシーケンス図で示します。このプロセスはSpring Security OAuth2 Clientが自動的に処理します。
+Access Token の有効期限が切れた際、BFF が自動的に Refresh Token を使用して新しい Access Token を取得する流れをシーケンス図で示します。このプロセスは Spring Security OAuth2 Client が自動的に処理します。
 
 ```mermaid
 sequenceDiagram
@@ -348,9 +572,12 @@ sequenceDiagram
 
 **重要なポイント:**
 
-- **自動処理**: Spring Security OAuth2 Clientが`OAuth2AuthorizedClientManager.authorize()`実行時に自動的にトークン期限をチェックし、必要に応じてリフレッシュを実行
-- **VPS間通信の最小化**: Access Tokenが有効な間はVPS1（Keycloak）への通信は発生せず、期限切れ時のみVPS間通信が発生
-- **透過的な処理**: フロントエンドはトークンリフレッシュを意識する必要がなく、通常のAPIリクエストと同様に処理される
-- **セキュリティ**: Refresh Tokenは常にBFFのRedis内に保持され、フロントエンドには一切公開されない
-- **トークンローテーション**: Keycloak設定（`refreshTokenMaxReuse: 0`）により、リフレッシュ時に新しいRefresh Tokenが発行され、古いトークンは即座に無効化される。これによりトークン漏洩時のリスクを最小化し、Replay攻撃を防止
+- **自動処理**: Spring Security OAuth2 Client が`OAuth2AuthorizedClientManager.authorize()`実行時に自動的にトークン期限をチェックし、必要に応じてリフレッシュを実行
+- **VPS 間通信の最小化**: Access Token が有効な間は VPS1（Keycloak）への通信は発生せず、期限切れ時のみ VPS 間通信が発生
+- **透過的な処理**: フロントエンドはトークンリフレッシュを意識する必要がなく、通常の API リクエストと同様に処理される
+- **セキュリティ**: Refresh Token は常に BFF の Redis 内に保持され、フロントエンドには一切公開されない
+- **トークンローテーション**: Keycloak 設定（`refreshTokenMaxReuse: 0`）により、リフレッシュ時に新しい Refresh Token が発行され、古いトークンは即座に無効化される。これによりトークン漏洩時のリスクを最小化し、Replay 攻撃を防止
+- **PKCE対応**: 認証フロー全体でPKCEが適用され、認可コードの盗聴攻撃を防止（詳細は「4-1. BFFのセキュリティ機能と主要機能」参照）
+- **CSRF保護**: すべての状態変更操作（POST/PUT/DELETE）はCSRFトークンで保護（詳細は「4-1. BFFのセキュリティ機能と主要機能」参照）
+- **レート制限**: 認証エンドポイント・APIプロキシにレート制限が適用され、ブルートフォース攻撃やDDoS攻撃を軽減（詳細は「4-1. BFFのセキュリティ機能と主要機能」参照）
 - **実装詳細**: `OAuth2AuthorizedClientManager`は`OAuth2AuthorizedClientProviderBuilder`で`refreshToken()`プロバイダーを設定することで、トークンリフレッシュ機能が有効化される（[SecurityConfig.java](src/main/java/com/example/api_gateway_bff/config/SecurityConfig.java)参照）

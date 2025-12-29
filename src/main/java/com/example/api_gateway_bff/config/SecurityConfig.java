@@ -32,10 +32,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import jakarta.servlet.http.HttpSession;
 
@@ -73,11 +69,18 @@ public class SecurityConfig {
     private RateLimitFilter rateLimitFilter;
 
     /**
-     * フロントエンドアプリケーションのURL
+     * フロントエンドアプリケーションのURL（デフォルト・フォールバック用）
      * OAuth2認証成功後のリダイレクト先として使用
      */
     @Value("${app.frontend.url}")
     private String frontendUrl;
+
+    /**
+     * CORS許可オリジンリスト
+     * マルチアプリケーション対応のセキュリティ検証に使用
+     */
+    @Value("${CORS_ALLOWED_ORIGINS:}")
+    private String corsAllowedOrigins;
 
     /**
      * Spring Securityのフィルターチェーン設定
@@ -214,6 +217,13 @@ public class SecurityConfig {
      *
      * <p>IdPでの認証完成後、このハンドラーがフロントエンドにリダイレクトします。</p>
      *
+     * <p><b>マルチアプリケーション対応:</b></p>
+     * <ul>
+     *   <li>セッションに保存された<code>original_frontend_url</code>から動的にリダイレクト先を決定</li>
+     *   <li>同一VPS + Nginx構成: <code>https://app.example.com/my-books</code> → <code>/my-books/auth-callback</code></li>
+     *   <li>異なるVPS構成: <code>https://books.example.com</code> → <code>/auth-callback</code></li>
+     * </ul>
+     *
      * <p><b>認証後のリダイレクト先機能（return_toパラメータ）:</b></p>
      * <ul>
      *   <li>セッションに保存された<code>redirect_after_login</code>（復帰先URL）を取得</li>
@@ -238,6 +248,18 @@ public class SecurityConfig {
                 log.error("Session is null after authentication!");
                 response.sendRedirect(frontendUrl + "/auth-callback");
                 return;
+            }
+
+            // セッションから保存されたフロントエンドURLを取得（マルチアプリ対応）
+            String savedFrontendUrl = (String) session.getAttribute("original_frontend_url");
+            String dynamicFrontendUrl = savedFrontendUrl != null ? savedFrontendUrl : frontendUrl;
+
+            // 使用後はセッションから削除
+            if (savedFrontendUrl != null) {
+                session.removeAttribute("original_frontend_url");
+                log.info("Using saved frontend URL: {}", savedFrontendUrl);
+            } else {
+                log.info("Using default frontend URL: {}", frontendUrl);
             }
 
             String returnTo = null;
@@ -282,8 +304,8 @@ public class SecurityConfig {
                 }
             }
 
-            // デフォルトのリダイレクト先: フロントエンドの認証コールバックページ
-            String redirectUrl = frontendUrl + "/auth-callback";
+            // 動的に決定されたフロントエンドURLを使用（マルチアプリ対応）
+            String redirectUrl = dynamicFrontendUrl + "/auth-callback";
 
             // returnToがある場合は、セキュリティ検証してクエリパラメータとして追加
             if (returnTo != null && !returnTo.isBlank()) {
@@ -301,25 +323,15 @@ public class SecurityConfig {
     }
 
     /**
-     * URLが安全なリダイレクト先であるかを検証する
+     * URLが安全なリダイレクト先であるかを検証する（マルチアプリ対応）
+     *
+     * <p>CORS_ALLOWED_ORIGINSを使用してオープンリダイレクト脆弱性を防止します。</p>
      *
      * @param url 検証するURL文字列
      * @return 安全な場合はtrue、そうでない場合はfalse
      */
     private boolean isUrlSafe(String url) {
         try {
-            // フロントエンドのホストを取得
-            String frontendHost = new URI(frontendUrl).getHost();
-            if (frontendHost == null) {
-                // 設定が不正な場合は安全側に倒す
-                return false;
-            }
-
-            // 許可するホストのリスト（重複を自動的に除外）
-            final Set<String> allowedHosts = Stream.of("localhost", frontendHost)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-
             URI redirectUri = new URI(url);
 
             // 1. ホストが指定されていない相対パス（例: /dashboard）は安全とみなす
@@ -327,11 +339,33 @@ public class SecurityConfig {
                 return true;
             }
 
-            // 2. ホストが許可リストに含まれているかチェック
-            return allowedHosts.contains(redirectUri.getHost());
+            // 2. CORS_ALLOWED_ORIGINSで許可されたオリジンかチェック
+            String origin = redirectUri.getScheme() + "://" + redirectUri.getAuthority();
+
+            if (corsAllowedOrigins == null || corsAllowedOrigins.isBlank()) {
+                log.warn("CORS_ALLOWED_ORIGINS not configured, falling back to frontendUrl");
+                // フォールバック: frontendUrlのホストと比較
+                String frontendHost = new URI(frontendUrl).getHost();
+                return frontendHost != null &&
+                       (frontendHost.equals(redirectUri.getHost()) || "localhost".equals(redirectUri.getHost()));
+            }
+
+            // CORS_ALLOWED_ORIGINSに含まれているかチェック（ワイルドカード対応）
+            String[] allowedOrigins = corsAllowedOrigins.split(",");
+            for (String allowed : allowedOrigins) {
+                allowed = allowed.trim();
+                // ワイルドカード対応（例: https://localhost:*）
+                if (origin.matches(allowed.replace("*", ".*").replace(".", "\\."))) {
+                    return true;
+                }
+            }
+
+            log.warn("Unsafe redirect attempt blocked: {}", url);
+            return false;
 
         } catch (URISyntaxException e) {
             // 不正な形式のURLは危険とみなし、リダイレクトを許可しない
+            log.warn("Invalid URL format: {}", url);
             return false;
         }
     }
