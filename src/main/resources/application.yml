@@ -21,8 +21,8 @@ spring:
   # Redis Configuration for Session Storage
   data:
     redis:
-      host: ${REDIS_HOST:redis}
-      port: ${REDIS_PORT:6379}
+      host: redis
+      port: 6379
       timeout: 2000ms
       lettuce:
         pool:
@@ -39,16 +39,6 @@ spring:
       namespace: spring:session
 
 # ============================================
-# Identity Provider Configuration
-# ============================================
-idp:
-  # issuer-uri（Spring Securityの設定と共通）
-  issuer-uri: ${IDP_ISSUER_URI}
-  # 注: 現在の実装では、BFFがバックエンドからWebClientでIDプロバイダーにログアウトリクエストを送信するため、
-  # post_logout_redirect_uriはブラウザには届きません。フロントエンド側で独自にリダイレクト処理を実装してください。
-  post-logout-redirect-uri: ${IDP_POST_LOGOUT_REDIRECT_URI}
-
-# ============================================
 # Server Configuration
 # ============================================
 server:
@@ -57,12 +47,11 @@ server:
   # 本番環境（ロードバランサー経由）でも開発環境でも正しく動作
   forward-headers-strategy: framework
   servlet:
-    context-path: /
     session:
       cookie:
         name: BFFSESSIONID
         http-only: true
-        secure: ${COOKIE_SECURE:false}
+        secure: false
         same-site: lax
         max-age: 1800
 
@@ -73,28 +62,6 @@ app:
   # フロントエンドURL
   frontend:
     url: ${FRONTEND_URL}
-  # 複数のリソースサーバー設定
-  resource-servers:
-    service-01:
-      url: ${SERVICE_01_URL:http://service-01-api:8080}
-      timeout: 30
-      path-prefix: ${SERVICE_01_PATH_PREFIX:/service-01}
-    service-02:
-      url: ${SERVICE_02_URL:http://service-02-api:8080}
-      timeout: 30
-      path-prefix: ${SERVICE_02_PATH_PREFIX:/service-02}
-    service-03:
-      url: ${SERVICE_03_URL:http://service-03-api:8080}
-      timeout: 30
-      path-prefix: ${SERVICE_03_PATH_PREFIX:/service-03}
-    service-04:
-      url: ${SERVICE_04_URL:http://service-04-api:8080}
-      timeout: 30
-      path-prefix: ${SERVICE_04_PATH_PREFIX:/service-04}
-    service-05:
-      url: ${SERVICE_05_URL:http://service-05-api:8080}
-      timeout: 30
-      path-prefix: ${SERVICE_05_PATH_PREFIX:/service-05}
 
 # ============================================
 # Rate Limit Configuration

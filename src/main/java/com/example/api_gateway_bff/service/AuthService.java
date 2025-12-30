@@ -40,7 +40,7 @@ public class AuthService {
     private final WebClient webClient;
     private final OidcMetadataClient oidcMetadataClient;
 
-    @Value("${idp.post-logout-redirect-uri}")
+    @Value("${IDP_POST_LOGOUT_REDIRECT_URI}")
     private String postLogoutRedirectUri;
 
     // ===========================================
