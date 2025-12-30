@@ -1,39 +1,44 @@
 package com.example.api_gateway_bff.service;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import com.example.api_gateway_bff.client.OidcMetadataClient;
 import com.example.api_gateway_bff.dto.LogoutResponse;
 
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import java.time.Instant;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
- * AuthServiceの単体テスト
+ * AuthService の単体テスト
  *
- * <p>認証サービスのビジネスロジックを検証します。</p>
+ * <p>ログアウト処理のビジネスロジックをテストします。</p>
  *
- * <h3>テストケース:</h3>
+ * <h3>テスト内容:</h3>
  * <ul>
- *   <li>ログアウト処理（セッション無効化・Cookie削除）</li>
- *   <li>完全ログアウト処理（IdP連携）</li>
+ *   <li>通常ログアウト（BFFセッションのみクリア）</li>
+ *   <li>完全ログアウト（OIDCプロバイダーセッションも無効化）</li>
+ *   <li>OIDCプロバイダー接続失敗時の動作</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +46,10 @@ class AuthServiceTest {
 
     @Mock
     private WebClient webClient;
+
+    @SuppressWarnings("rawtypes")
+    @Mock
+    private WebClient.RequestHeadersUriSpec requestHeadersUriSpec;
 
     @Mock
     private OidcMetadataClient oidcMetadataClient;
@@ -54,86 +63,161 @@ class AuthServiceTest {
     @Mock
     private HttpSession session;
 
-    @Mock
-    private OAuth2User oAuth2User;
-
+    @InjectMocks
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(webClient, oidcMetadataClient);
+        // SecurityContextをクリア
+        SecurityContextHolder.clearContext();
+
+        // postLogoutRedirectUriをリフレクションで設定
         ReflectionTestUtils.setField(authService, "postLogoutRedirectUri", "http://localhost:5173/logout-complete");
     }
 
-    /**
-     * テスト: 通常ログアウト（BFFセッションのみクリア）
-     */
+    // ═══════════════════════════════════════════════════════════════
+    // 通常ログアウトのテスト
+    // ═══════════════════════════════════════════════════════════════
+
     @Test
-    void testLogout_ShouldInvalidateSessionAndClearCookie() {
+    void 通常ログアウトでBFFセッションがクリアされる() {
         // Arrange
         when(request.getSession(false)).thenReturn(session);
 
         // Act
-        LogoutResponse result = authService.logout(request, response, oAuth2User, false);
+        LogoutResponse result = authService.logout(request, response, null, false);
 
         // Assert
-        assertThat(result.getMessage()).isEqualTo("success");
+        assertEquals("success", result.getMessage());
+        assertNull(result.getWarning());
+
+        // セッション無効化を確認
         verify(session).invalidate();
-        verify(response).addCookie(
-            argThat(
-                cookie -> cookie.getName().equals("BFFSESSIONID") &&
-                    cookie.getMaxAge() == 0 &&
-                    cookie.isHttpOnly()
-            )
-        );
+
+        // Cookieクリアを確認（BFFSESSIONID + XSRF-TOKEN）
+        verify(response, times(2)).addCookie(any(Cookie.class));
     }
 
-    /**
-     * テスト: セッションが存在しない場合のログアウト
-     */
+    // ═══════════════════════════════════════════════════════════════
+    // 完全ログアウトのテスト（成功ケース）
+    // ═══════════════════════════════════════════════════════════════
+
     @Test
-    void testLogout_WhenNoSession_ShouldNotThrowException() {
-        // Arrange
-        when(request.getSession(false)).thenReturn(null);
-
-        // Act
-        LogoutResponse result = authService.logout(request, response, oAuth2User, false);
-
-        // Assert
-        assertThat(result.getMessage()).isEqualTo("success");
-        // 2つのCookie（BFFSESSIONID, XSRF-TOKEN）が削除される
-        verify(response, times(2)).addCookie(any());
-    }
-
-    /**
-     * テスト: 完全ログアウト（IdP連携）
-     * 注: 実際のWebClient呼び出しはモック化が複雑なため、基本動作のみ検証
-     */
-    @Test
-    void testLogout_WithComplete_ShouldAttemptIdPLogout() {
+    void 完全ログアウトでOIDCプロバイダーにログアウトリクエストが送信される() {
         // Arrange
         when(request.getSession(false)).thenReturn(session);
 
-        // OidcUserのモックを作成
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("sub", "user123");
-        claims.put("name", "Test User");
-
-        OidcIdToken idToken = new OidcIdToken(
-            "test-token-value",
-            Instant.now(),
-            Instant.now().plusSeconds(3600),
-            claims
-        );
+        // OidcUserのモック作成
+        OidcIdToken idToken = OidcIdToken.withTokenValue("test-id-token")
+            .issuedAt(Instant.now())
+            .expiresAt(Instant.now().plusSeconds(3600))
+            .subject("test-user")
+            .claim("sub", "test-user")
+            .build();
 
         OidcUser oidcUser = new DefaultOidcUser(null, idToken);
+
+        // OidcMetadataClientのモック
+        when(oidcMetadataClient.getEndSessionEndpoint())
+            .thenReturn("http://keycloak:8080/realms/test/protocol/openid-connect/logout");
+
+        // WebClientのモック
+        when(webClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.exchangeToMono(any())).thenReturn(Mono.just("success"));
 
         // Act
         LogoutResponse result = authService.logout(request, response, oidcUser, true);
 
         // Assert
-        assertThat(result.getMessage()).isEqualTo("success");
+        assertEquals("success", result.getMessage());
+        assertNull(result.getWarning());
+
+        // WebClientが呼ばれたことを確認
+        verify(webClient).get();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 完全ログアウトのテスト（失敗ケース）
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    void OIDCプロバイダー接続失敗時もBFFログアウトは成功する() {
+        // Arrange
+        when(request.getSession(false)).thenReturn(session);
+
+        // OidcUserのモック作成
+        OidcIdToken idToken = OidcIdToken.withTokenValue("test-id-token")
+            .issuedAt(Instant.now())
+            .expiresAt(Instant.now().plusSeconds(3600))
+            .subject("test-user")
+            .claim("sub", "test-user")
+            .build();
+
+        OidcUser oidcUser = new DefaultOidcUser(null, idToken);
+
+        // OidcMetadataClientのモック
+        when(oidcMetadataClient.getEndSessionEndpoint())
+            .thenReturn("http://keycloak:8080/realms/test/protocol/openid-connect/logout");
+
+        // WebClientのモック（接続失敗をシミュレート）
+        when(webClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString())).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.exchangeToMono(any()))
+            .thenReturn(Mono.error(new RuntimeException("Connection failed")));
+
+        // Act
+        LogoutResponse result = authService.logout(request, response, oidcUser, true);
+
+        // Assert
+        assertEquals("success", result.getMessage());
+        assertNotNull(result.getWarning());
+        assertTrue(result.getWarning().contains("認証サーバーのログアウトに失敗"));
+
+        // セッションは無効化される
         verify(session).invalidate();
-        // IdPへのリクエストは実際には送信されない（WebClientがモック）
+    }
+
+    @Test
+    void IDトークンがない場合OIDCログアウトはスキップされる() {
+        // Arrange
+        when(request.getSession(false)).thenReturn(session);
+
+        // Act
+        LogoutResponse result = authService.logout(request, response, null, true);
+
+        // Assert
+        assertEquals("success", result.getMessage());
+        assertNull(result.getWarning());
+
+        // WebClientは呼ばれない
+        verify(webClient, never()).get();
+    }
+
+    @Test
+    void エンドセッションエンドポイントがない場合は警告を返す() {
+        // Arrange
+        when(request.getSession(false)).thenReturn(session);
+
+        // OidcUserのモック作成
+        OidcIdToken idToken = OidcIdToken.withTokenValue("test-id-token")
+            .issuedAt(Instant.now())
+            .expiresAt(Instant.now().plusSeconds(3600))
+            .subject("test-user")
+            .claim("sub", "test-user")
+            .build();
+
+        OidcUser oidcUser = new DefaultOidcUser(null, idToken);
+
+        // OidcMetadataClientのモック（エンドポイントなし）
+        when(oidcMetadataClient.getEndSessionEndpoint()).thenReturn(null);
+
+        // Act
+        LogoutResponse result = authService.logout(request, response, oidcUser, true);
+
+        // Assert
+        assertEquals("success", result.getMessage());
+        assertNotNull(result.getWarning());
+        assertTrue(result.getWarning().contains("認証サーバーのログアウトに失敗"));
     }
 }

@@ -196,7 +196,7 @@ public class AuthController {
      */
     @GetMapping("/login")
     public void login(
-        @RequestParam(required = false) String returnTo,
+        @RequestParam(name = "return_to", required = false) String returnTo,
         HttpServletRequest request,
         HttpSession session,
         HttpServletResponse response
