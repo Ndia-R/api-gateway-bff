@@ -4,10 +4,10 @@
 
 ## 1. サーバー役割概要
 
-| サーバー | ホスト名                     | 主な役割                                          | 接続方式               |
-| :------- | :--------------------------- | :------------------------------------------------ | :--------------------- |
-| **VPS1** | `vsv-crystal.skygroup.local` | **認証プロバイダー** および **Docker レジストリ** | **インターネット経由** |
-| **VPS2** | `vsv-emerald.skygroup.local` | **Web アプリケーション本体** (実行環境)           | **インターネット経由** |
+| サーバー | ホスト名                     | 主な役割                                                                 | 接続方式               |
+| :------- | :--------------------------- | :----------------------------------------------------------------------- | :--------------------- |
+| **VPS1** | `vsv-crystal.skygroup.local` | **認証プロバイダー**、**Docker レジストリ**、および **静的アセット配信** | **インターネット経由** |
+| **VPS2** | `vsv-emerald.skygroup.local` | **Web アプリケーション本体** (実行環境)                                  | **インターネット経由** |
 
 ## 2. システムコンポーネント関係図
 
@@ -26,6 +26,7 @@ graph LR
         Keycloak(Keycloak)
         Keycloak_DB(DB<br>Keycloak)
         Registry(Registry)
+        Nginx_Assets(Nginx<br>Assets)
     end
 
     subgraph VPS2 [🌐 VPS2<br>vsv-emerald.skygroup.local]
@@ -44,17 +45,25 @@ graph LR
         end
     end
 
-    %% ユーザーアクセス (VPS1へ - 認証・レジストリ)
+    %% ユーザーアクセス (VPS1へ - 認証)
     User -- OIDC認証 --> Nginx_VPS1
     Nginx_VPS1 -- /auth --> Keycloak
-    Developer -. HTTPS (Push/Pull) .-> Nginx_VPS1
-    Nginx_VPS1 -- /v2 --> Registry
 
-    %% ユーザーアクセス (VPS2へ - 2つの経路)
+    %% ユーザーアクセス (VPS1へ - 画像・フォント等)
+    User -- HTTPS (画像・フォント等) --> Nginx_VPS1
+    Nginx_VPS1 -- /assets/** --> Nginx_Assets
+
+    %% ユーザーアクセス (VPS2へ - REST API)
     User -- HTTPS (REST API) --> Nginx_VPS2
     Nginx_VPS2 -- /api/** --> BFF
+
+    %% ユーザーアクセス (VPS2へ - 静的ファイル)
     User -- HTTPS (静的ファイル) --> Nginx_VPS2
     Nginx_VPS2 -- ルーティング --> APP
+
+    %% 開発者アクセス (VPS1へ - レジストリ)
+    Developer -. HTTPS (Push/Pull) .-> Nginx_VPS1
+    Nginx_VPS1 -- /v2 --> Registry
 
     %% 認証フロー (VPS間連携)
     BFF -. OIDC(トークン交換/HTTPS) .-> Nginx_VPS1
@@ -91,6 +100,7 @@ graph LR
         Keycloak(Keycloak)
         Keycloak_DB(DB<br>Keycloak)
         Registry(Registry)
+        Nginx_Assets(Nginx<br>Assets)
     end
 
     subgraph VPS2 [🌐 VPS2<br>vsv-emerald.skygroup.local]
@@ -123,9 +133,9 @@ graph LR
     User -- OIDC認証 --> Nginx_VPS1
     Nginx_VPS1 -- /auth --> Keycloak
 
-    %% 開発者アクセス (VPS1へ - レジストリ)
-    Developer -. HTTPS (Push/Pull) .-> Nginx_VPS1
-    Nginx_VPS1 -- /v2 --> Registry
+    %% ユーザーアクセス (VPS1へ - 画像・フォント等)
+    User -- HTTPS (画像・フォント等) --> Nginx_VPS1
+    Nginx_VPS1 -- /assets/** --> Nginx_Assets
 
     %% ユーザーアクセス (VPS2へ - REST API)
     User -- HTTPS (REST API) --> Nginx_VPS2
@@ -136,6 +146,10 @@ graph LR
     User -- HTTPS (静的ファイル) --> Nginx_VPS2
     Nginx_VPS2 -- /my-books --> APP_Books
     Nginx_VPS2 -- /my-music --> APP_Music
+
+    %% 開発者アクセス (VPS1へ - レジストリ)
+    Developer -. HTTPS (Push/Pull) .-> Nginx_VPS1
+    Nginx_VPS1 -- /v2 --> Registry
 
     %% 認証フロー (VPS間連携)
     BFF -. OIDC(トークン交換/HTTPS) .-> Nginx_VPS1
@@ -171,12 +185,13 @@ graph LR
 
 #### VPS1 (vsv-crystal.skygroup.local)
 
-| プロジェクト名 | 図中の表記 | コンテナ名    | 役割                                                               |
-| -------------- | ---------- | ------------- | ------------------------------------------------------------------ |
-| `vsv-crystal`  | Nginx      | `nginx-edge`  | エッジリバースプロキシ（HTTPS 終端、認証・レジストリルーティング） |
-|                | Keycloak   | `keycloak`    | OIDC 認証プロバイダー                                              |
-|                | DB         | `keycloak-db` | Keycloak 専用データベース                                          |
-|                | Registry   | `registry`    | Docker イメージレジストリ                                          |
+| プロジェクト名 | 図中の表記 | コンテナ名     | 役割                                                               |
+| -------------- | ---------- | -------------- | ------------------------------------------------------------------ |
+| `vsv-crystal`  | Nginx      | `nginx-edge`   | エッジリバースプロキシ（HTTPS 終端、認証・レジストリルーティング） |
+|                | Keycloak   | `keycloak`     | OIDC 認証プロバイダー                                              |
+|                | DB         | `keycloak-db`  | Keycloak 専用データベース                                          |
+|                | Registry   | `registry`     | Docker イメージレジストリ                                          |
+|                | Nginx      | `nginx-assets` | 静的アセット配信（画像、フォント、CSS、JS 等）                     |
 
 #### VPS2 (vsv-emerald.skygroup.local) - シングルアプリケーション構成
 
@@ -197,9 +212,11 @@ graph LR
   - **`nginx-edge`**: **エッジリバースプロキシ**。外部からの HTTPS/HTTP トラフィックを受け付ける**最前線の通信窓口**（ポート 80/443 を公開）。SSL 終端とルーティングを担当し、以下のエンドポイントを提供：
     - `/auth` → Keycloak（OIDC 認証）
     - `/v2` → Registry（Docker イメージの push/pull）
+    - `/assets` → nginx-assets（静的アセット配信）
   - **`keycloak`**: **認証プロバイダー**。OpenID Connect (OIDC) プロトコルを提供。
   - **`keycloak-db`**: **Keycloak 専用のデータベース**。Keycloak が管理するユーザー情報、レルム設定、クライアント定義、セッション情報などを永続化するために利用されます。
   - **`registry`**: **Docker イメージレジストリ**。アプリケーションイメージの保管と配布。nginx-edge 経由でのみアクセス可能（内部ポート 5000）。
+  - **`nginx-assets`**: **静的アセット配信サーバー**。画像ファイル、フォント、CSS、JavaScript などの静的リソースを高速に配信します。nginx-edge からのリクエスト（`/assets/**`）を受け取り、効率的なキャッシュと gzip 圧縮を適用して配信します。内部ポート 80 で稼働し、外部からは nginx-edge 経由でのみアクセス可能です。
 
 ## 4. VPS2: Web アプリケーションサーバー (`vsv-emerald.skygroup.local`)
 
@@ -215,55 +232,55 @@ graph LR
     - Frontend からのリクエストを検証し、Backend へ転送する際の**Bearer トークン付与**を担当します。
   - **`redis`**: **BFF**が利用する**キャッシュ/データストア**。**アクセストークンとリフレッシュトークン**の保存・管理に使用されます。
 
-## 4-1. BFFのセキュリティ機能と主要機能
+## 4-1. BFF のセキュリティ機能と主要機能
 
-BFF（Backend for Frontend）は、単なるAPIプロキシではなく、以下の重要なセキュリティ機能とユーザビリティ向上機能を提供します。
+BFF（Backend for Frontend）は、単なる API プロキシではなく、以下の重要なセキュリティ機能とユーザビリティ向上機能を提供します。
 
 ### セキュリティ機能
 
 #### 🔐 PKCE (Proof Key for Code Exchange) 対応
 
-Authorization Code Flowのセキュリティを強化する仕組み。認可コードの盗聴攻撃を防止します。
+Authorization Code Flow のセキュリティを強化する仕組み。認可コードの盗聴攻撃を防止します。
 
 **動作原理:**
 
-1. BFFが`code_verifier`（ランダムな文字列43-128文字）を生成
+1. BFF が`code_verifier`（ランダムな文字列 43-128 文字）を生成
 2. `code_challenge`を計算: `BASE64URL(SHA256(code_verifier))`
-3. 認可リクエスト時に`code_challenge`をKeycloakに送信
-4. トークン交換時に`code_verifier`をKeycloakに送信して検証
+3. 認可リクエスト時に`code_challenge`を Keycloak に送信
+4. トークン交換時に`code_verifier`を Keycloak に送信して検証
 
-**実装:** Spring Security標準の`OAuth2AuthorizationRequestCustomizers.withPkce()`を使用
+**実装:** Spring Security 標準の`OAuth2AuthorizationRequestCustomizers.withPkce()`を使用
 
 **参照:** [CustomAuthorizationRequestResolver.java](src/main/java/com/example/api_gateway_bff/config/CustomAuthorizationRequestResolver.java)
 
 ---
 
-#### 🛡️ CSRF保護 (CookieベースCSRFトークン)
+#### 🛡️ CSRF 保護 (Cookie ベース CSRF トークン)
 
-POST/PUT/DELETE等の状態変更操作を保護し、クロスサイトリクエストフォージェリ攻撃を防止します。
+POST/PUT/DELETE 等の状態変更操作を保護し、クロスサイトリクエストフォージェリ攻撃を防止します。
 
 **仕組み:**
 
-- **CSRFトークンCookie**: `XSRF-TOKEN`（HttpOnly=false、JavaScriptから読み取り可能）
-- **CSRFトークンヘッダー**: フロントエンドはリクエスト時に`X-XSRF-TOKEN`ヘッダーにトークンを設定
-- **自動検証**: Spring Securityが自動的にトークンを検証
+- **CSRF トークン Cookie**: `XSRF-TOKEN`（HttpOnly=false、JavaScript から読み取り可能）
+- **CSRF トークンヘッダー**: フロントエンドはリクエスト時に`X-XSRF-TOKEN`ヘッダーにトークンを設定
+- **自動検証**: Spring Security が自動的にトークンを検証
 
 **フロントエンド実装例:**
 
 ```javascript
 const csrfToken = document.cookie
-  .split('; ')
-  .find((row) => row.startsWith('XSRF-TOKEN='))
-  ?.split('=')[1];
+  .split("; ")
+  .find((row) => row.startsWith("XSRF-TOKEN="))
+  ?.split("=")[1];
 
-fetch('/api/books', {
-  method: 'POST',
-  credentials: 'include',
+fetch("/api/books", {
+  method: "POST",
+  credentials: "include",
   headers: {
-    'Content-Type': 'application/json',
-    'X-XSRF-TOKEN': csrfToken,
+    "Content-Type": "application/json",
+    "X-XSRF-TOKEN": csrfToken,
   },
-  body: JSON.stringify({ title: '新しい本' }),
+  body: JSON.stringify({ title: "新しい本" }),
 });
 ```
 
@@ -273,28 +290,28 @@ fetch('/api/books', {
 
 #### ⏱️ レート制限 (Bucket4j + Redis)
 
-ブルートフォース攻撃やDDoS攻撃を軽減する分散レート制限機能。
+ブルートフォース攻撃や DDoS 攻撃を軽減する分散レート制限機能。
 
 **レート制限ルール:**
 
-| エンドポイント       | 制限             | 識別方法     | 目的                                   |
-| -------------------- | ---------------- | ------------ | -------------------------------------- |
-| `/bff/auth/login`    | 30リクエスト/分  | IPアドレス   | ブルートフォース攻撃防止               |
-| `/api/**` (認証済み) | 200リクエスト/分 | セッションID | API乱用防止                            |
-| `/api/**` (未認証)   | 100リクエスト/分 | IPアドレス   | DoS攻撃防止（書籍検索等の公開API保護） |
+| エンドポイント       | 制限              | 識別方法      | 目的                                      |
+| -------------------- | ----------------- | ------------- | ----------------------------------------- |
+| `/bff/auth/login`    | 30 リクエスト/分  | IP アドレス   | ブルートフォース攻撃防止                  |
+| `/api/**` (認証済み) | 200 リクエスト/分 | セッション ID | API 乱用防止                              |
+| `/api/**` (未認証)   | 100 リクエスト/分 | IP アドレス   | DoS 攻撃防止（書籍検索等の公開 API 保護） |
 
 **除外エンドポイント（レート制限なし）:**
 
 - `/actuator/health` - 監視システムからのヘルスチェック
-- `/bff/login/oauth2/code/**` - Keycloakからのコールバック
-- `/oauth2/authorization/**` - OAuth2認証開始
+- `/bff/login/oauth2/code/**` - Keycloak からのコールバック
+- `/oauth2/authorization/**` - OAuth2 認証開始
 - `/bff/auth/logout` - ログアウト（セッション無効化済み）
 
 **技術詳細:**
 
 - **ライブラリ**: Bucket4j 8.7.0
-- **バックエンド**: Redis（Lettuce CAS方式）
-- **分散対応**: 複数BFFインスタンス間でレート制限状態を共有
+- **バックエンド**: Redis（Lettuce CAS 方式）
+- **分散対応**: 複数 BFF インスタンス間でレート制限状態を共有
 - **アルゴリズム**: Token Bucket（トークンバケット）
 
 **レート制限超過時のレスポンス:**
@@ -347,9 +364,9 @@ AuthController.login()
 
 **セキュリティ対策:**
 
-- **オープンリダイレクト脆弱性対策**: `return_to`が安全なURL（相対パスまたは許可されたホスト）であるかを検証
+- **オープンリダイレクト脆弱性対策**: `return_to`が安全な URL（相対パスまたは許可されたホスト）であるかを検証
 - **許可されたホスト**: localhost、フロントエンドホスト
-- 不正なURLは自動的にブロックされ、デフォルトの`/auth-callback`にリダイレクト
+- 不正な URL は自動的にブロックされ、デフォルトの`/auth-callback`にリダイレクト
 
 **参照:** [CustomAuthorizationRequestResolver.java](src/main/java/com/example/api_gateway_bff/config/CustomAuthorizationRequestResolver.java), [SecurityConfig.java](src/main/java/com/example/api_gateway_bff/config/SecurityConfig.java), [AuthController.java](src/main/java/com/example/api_gateway_bff/controller/AuthController.java)
 
@@ -359,24 +376,24 @@ AuthController.login()
 
 #### 🔍 OIDC Discovery (自動メタデータ取得)
 
-`IDP_ISSUER_URI`から`/.well-known/openid-configuration`を自動取得し、複数のOIDC準拠IDプロバイダーに対応します。
+`IDP_ISSUER_URI`から`/.well-known/openid-configuration`を自動取得し、複数の OIDC 準拠 ID プロバイダーに対応します。
 
-**対応IDプロバイダー:**
+**対応 ID プロバイダー:**
 
-| プロバイダー    | ISSUER_URI 例                                               |
-| --------------- | ----------------------------------------------------------- |
-| **Keycloak**    | `http://auth.localhost:8444/realms/test-user-realm`         |
-| **Auth0**       | `https://your-tenant.auth0.com`                             |
-| **Okta**        | `https://dev-12345678.okta.com/oauth2/default`              |
-| **Azure AD**    | `https://login.microsoftonline.com/{tenant-id}/v2.0`        |
-| **Google**      | `https://accounts.google.com`                               |
-| **AWS Cognito** | `https://cognito-idp.{region}.amazonaws.com/{user-pool-id}` |
+| プロバイダー    | ISSUER_URI 例                                                                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Keycloak**    | `https://vsv-crystal.skygroup.local/auth/realms/sample-realm` (開発環境)<br>`https://vsv-crystal.skygroup.local/auth/realms/production-realm` (本番環境) |
+| **Auth0**       | `https://your-tenant.auth0.com`                                                                                                                          |
+| **Okta**        | `https://dev-12345678.okta.com/oauth2/default`                                                                                                           |
+| **Azure AD**    | `https://login.microsoftonline.com/{tenant-id}/v2.0`                                                                                                     |
+| **Google**      | `https://accounts.google.com`                                                                                                                            |
+| **AWS Cognito** | `https://cognito-idp.{region}.amazonaws.com/{user-pool-id}`                                                                                              |
 
 **利点:**
 
-- IDプロバイダーの切り替えが環境変数の変更のみで可能
-- エンドポイント（authorize, token, jwk, logout等）の個別指定が不要
-- Spring Securityが自動的にメタデータを検出・設定
+- ID プロバイダーの切り替えが環境変数の変更のみで可能
+- エンドポイント（authorize, token, jwk, logout 等）の個別指定が不要
+- Spring Security が自動的にメタデータを検出・設定
 
 **参照:** [OidcMetadataClient.java](src/main/java/com/example/api_gateway_bff/client/OidcMetadataClient.java)
 
@@ -395,7 +412,7 @@ AuthController.login()
 
 **動作:**
 
-1. BFFがリクエストパスからプレフィックスを抽出
+1. BFF がリクエストパスからプレフィックスを抽出
 2. `ResourceServerProperties`から対応するサービスを選択
 3. パスプレフィックスを削除してターゲットパスを生成（`/my-books/list` → `/list`）
 4. 認証済みの場合、アクセストークンを`Authorization: Bearer <token>`ヘッダーに付与
@@ -419,8 +436,8 @@ resource-servers:
 **利点:**
 
 - 新しいリソースサーバーの追加が設定ファイルの変更のみで可能
-- BFFコードの変更不要
-- 権限制御はリソースサーバー側で実施（BFFは認証のみ担当）
+- BFF コードの変更不要
+- 権限制御はリソースサーバー側で実施（BFF は認証のみ担当）
 
 **参照:** [ApiProxyController.java](src/main/java/com/example/api_gateway_bff/controller/ApiProxyController.java), [ResourceServerProperties.java](src/main/java/com/example/api_gateway_bff/config/ResourceServerProperties.java)
 
@@ -476,12 +493,12 @@ sequenceDiagram
 
 **PKCE (Proof Key for Code Exchange) の役割:**
 
-このフローでは、認可コードの盗聴攻撃を防止するため、PKCEが適用されています：
+このフローでは、認可コードの盗聴攻撃を防止するため、PKCE が適用されています：
 
-1. **Step 2**: BFFが`code_verifier`（ランダムな文字列）を生成し、`code_challenge`を計算
-2. **Step 3**: `code_challenge`をKeycloakに送信（認可リクエスト）
-3. **Step 7**: `code_verifier`をKeycloakに送信（トークン交換）
-4. Keycloakが`code_verifier`から`code_challenge`を再計算し、Step 3で受け取った値と一致するかを検証
+1. **Step 2**: BFF が`code_verifier`（ランダムな文字列）を生成し、`code_challenge`を計算
+2. **Step 3**: `code_challenge`を Keycloak に送信（認可リクエスト）
+3. **Step 7**: `code_verifier`を Keycloak に送信（トークン交換）
+4. Keycloak が`code_verifier`から`code_challenge`を再計算し、Step 3 で受け取った値と一致するかを検証
 
 これにより、認可コードが盗聴されても、`code_verifier`を持たない攻撃者はトークンを取得できません。
 
@@ -577,7 +594,7 @@ sequenceDiagram
 - **透過的な処理**: フロントエンドはトークンリフレッシュを意識する必要がなく、通常の API リクエストと同様に処理される
 - **セキュリティ**: Refresh Token は常に BFF の Redis 内に保持され、フロントエンドには一切公開されない
 - **トークンローテーション**: Keycloak 設定（`refreshTokenMaxReuse: 0`）により、リフレッシュ時に新しい Refresh Token が発行され、古いトークンは即座に無効化される。これによりトークン漏洩時のリスクを最小化し、Replay 攻撃を防止
-- **PKCE対応**: 認証フロー全体でPKCEが適用され、認可コードの盗聴攻撃を防止（詳細は「4-1. BFFのセキュリティ機能と主要機能」参照）
-- **CSRF保護**: すべての状態変更操作（POST/PUT/DELETE）はCSRFトークンで保護（詳細は「4-1. BFFのセキュリティ機能と主要機能」参照）
-- **レート制限**: 認証エンドポイント・APIプロキシにレート制限が適用され、ブルートフォース攻撃やDDoS攻撃を軽減（詳細は「4-1. BFFのセキュリティ機能と主要機能」参照）
+- **PKCE 対応**: 認証フロー全体で PKCE が適用され、認可コードの盗聴攻撃を防止（詳細は「4-1. BFF のセキュリティ機能と主要機能」参照）
+- **CSRF 保護**: すべての状態変更操作（POST/PUT/DELETE）は CSRF トークンで保護（詳細は「4-1. BFF のセキュリティ機能と主要機能」参照）
+- **レート制限**: 認証エンドポイント・API プロキシにレート制限が適用され、ブルートフォース攻撃や DDoS 攻撃を軽減（詳細は「4-1. BFF のセキュリティ機能と主要機能」参照）
 - **実装詳細**: `OAuth2AuthorizedClientManager`は`OAuth2AuthorizedClientProviderBuilder`で`refreshToken()`プロバイダーを設定することで、トークンリフレッシュ機能が有効化される（[SecurityConfig.java](src/main/java/com/example/api_gateway_bff/config/SecurityConfig.java)参照）

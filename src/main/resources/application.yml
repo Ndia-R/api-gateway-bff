@@ -59,9 +59,9 @@ server:
 # Application Configuration
 # ============================================
 app:
-  # フロントエンドURL
+  # デフォルトフロントエンドURL（フォールバック用）
   frontend:
-    url: ${FRONTEND_URL}
+    default-url: ${DEFAULT_FRONTEND_URL}
 
 # ============================================
 # Rate Limit Configuration

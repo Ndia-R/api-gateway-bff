@@ -69,11 +69,11 @@ public class SecurityConfig {
     private RateLimitFilter rateLimitFilter;
 
     /**
-     * フロントエンドアプリケーションのURL（デフォルト・フォールバック用）
+     * デフォルトフロントエンドURL（フォールバック用）
      * OAuth2認証成功後のリダイレクト先として使用
      */
-    @Value("${app.frontend.url}")
-    private String frontendUrl;
+    @Value("${app.frontend.default-url}")
+    private String defaultFrontendUrl;
 
     /**
      * CORS許可オリジンリスト
@@ -246,20 +246,20 @@ public class SecurityConfig {
             HttpSession session = request.getSession(false);
             if (session == null) {
                 log.error("Session is null after authentication!");
-                response.sendRedirect(frontendUrl + "/auth-callback");
+                response.sendRedirect(defaultFrontendUrl + "/auth-callback");
                 return;
             }
 
             // セッションから保存されたフロントエンドURLを取得（マルチアプリ対応）
             String savedFrontendUrl = (String) session.getAttribute("original_frontend_url");
-            String dynamicFrontendUrl = savedFrontendUrl != null ? savedFrontendUrl : frontendUrl;
+            String dynamicFrontendUrl = savedFrontendUrl != null ? savedFrontendUrl : defaultFrontendUrl;
 
             // 使用後はセッションから削除
             if (savedFrontendUrl != null) {
                 session.removeAttribute("original_frontend_url");
                 log.info("Using saved frontend URL: {}", savedFrontendUrl);
             } else {
-                log.info("Using default frontend URL: {}", frontendUrl);
+                log.info("Using default frontend URL: {}", defaultFrontendUrl);
             }
 
             String returnTo = null;
@@ -343,9 +343,9 @@ public class SecurityConfig {
             String origin = redirectUri.getScheme() + "://" + redirectUri.getAuthority();
 
             if (corsAllowedOrigins == null || corsAllowedOrigins.isBlank()) {
-                log.warn("CORS_ALLOWED_ORIGINS not configured, falling back to frontendUrl");
-                // フォールバック: frontendUrlのホストと比較
-                String frontendHost = new URI(frontendUrl).getHost();
+                log.warn("CORS_ALLOWED_ORIGINS not configured, falling back to defaultFrontendUrl");
+                // フォールバック: defaultFrontendUrlのホストと比較
+                String frontendHost = new URI(defaultFrontendUrl).getHost();
                 return frontendHost != null &&
                        (frontendHost.equals(redirectUri.getHost()) || "localhost".equals(redirectUri.getHost()));
             }

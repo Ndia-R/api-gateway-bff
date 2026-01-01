@@ -342,12 +342,12 @@ RATE_LIMIT_API_ANONYMOUS_RPM=100
 # ============================================
 # Identity Provider Configuration
 # ============================================
-IDP_CLIENT_ID=my-books-client
+IDP_CLIENT_ID=api-gateway-bff-client
 IDP_CLIENT_SECRET=your-client-secret
 IDP_REDIRECT_URI=http://localhost:8888/bff/login/oauth2/code/idp
 
 # ISSUER_URIで統一（Keycloak、Auth0、Okta等のOIDC準拠プロバイダー）
-IDP_ISSUER_URI=http://auth.localhost:8444/realms/test-user-realm
+IDP_ISSUER_URI=http://auth.localhost:8444/realms/sample-realm
 IDP_POST_LOGOUT_REDIRECT_URI=http://localhost:5173/logout-complete
 
 # ============================================
@@ -359,8 +359,8 @@ REDIS_PORT=6379
 # ============================================
 # Application Configuration
 # ============================================
-# フロントエンドURL
-FRONTEND_URL=http://localhost:5173
+# デフォルトフロントエンドURL（フォールバック用）
+DEFAULT_FRONTEND_URL=http://localhost:5173
 
 # 複数のリソースサーバー設定
 # My Books Service
@@ -383,7 +383,7 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:*
 
 #### Keycloak
 ```bash
-IDP_ISSUER_URI=http://auth.localhost:8444/realms/test-user-realm
+IDP_ISSUER_URI=http://auth.localhost:8444/realms/sample-realm
 ```
 - パス構造: `/realms/{realm-name}`
 - Keycloak特有の「レルム」概念を使用
@@ -729,17 +729,17 @@ fetch('/api/books', {
 #### 導入前（Keycloak - 個別エンドポイント指定方式）
 ```yaml
 # Keycloak特有のパス構造で個別エンドポイントを指定
-IDP_AUTHORIZE_URI=http://localhost:8180/realms/test-user-realm/protocol/openid-connect/auth
-IDP_TOKEN_URI=http://idp:8080/realms/test-user-realm/protocol/openid-connect/token
-IDP_JWK_URI=http://idp:8080/realms/test-user-realm/protocol/openid-connect/certs
-IDP_LOGOUT_URI=http://idp:8080/realms/test-user-realm/protocol/openid-connect/logout
+IDP_AUTHORIZE_URI=http://localhost:8180/realms/sample-realm/protocol/openid-connect/auth
+IDP_TOKEN_URI=http://idp:8080/realms/sample-realm/protocol/openid-connect/token
+IDP_JWK_URI=http://idp:8080/realms/sample-realm/protocol/openid-connect/certs
+IDP_LOGOUT_URI=http://idp:8080/realms/sample-realm/protocol/openid-connect/logout
 ```
 **注**: `/realms/` と `/protocol/openid-connect/` はKeycloak固有のパス構造
 
 #### 導入後（OIDC Discovery - すべてのプロバイダー対応）
 ```yaml
 # Keycloakの例（他のプロバイダーでも同じ仕組み）
-IDP_ISSUER_URI=http://auth.localhost:8444/realms/test-user-realm
+IDP_ISSUER_URI=http://auth.localhost:8444/realms/sample-realm
 ```
 
 **改善効果:**

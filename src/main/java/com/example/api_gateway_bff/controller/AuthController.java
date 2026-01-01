@@ -34,8 +34,8 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @Value("${app.frontend.url}")
-    private String frontendUrl;
+    @Value("${app.frontend.default-url}")
+    private String defaultFrontendUrl;
 
     @Value("${CORS_ALLOWED_ORIGINS:}")
     private String corsAllowedOrigins;
@@ -48,7 +48,7 @@ public class AuthController {
      *   <li><b>セッションに保存された値</b>（OAuth2コールバック対応）</li>
      *   <li><b>Refererヘッダー</b>からフルパス抽出（同一VPS + Nginx対応）</li>
      *   <li><b>Originヘッダー</b>（異なるVPS対応）</li>
-     *   <li><b>デフォルトのfrontendUrl</b>（フォールバック）</li>
+     *   <li><b>デフォルトフロントエンドURL</b>（フォールバック）</li>
      * </ol>
      *
      * <h3>動作例:</h3>
@@ -105,8 +105,8 @@ public class AuthController {
         }
 
         // 4. デフォルト値
-        log.debug("Using default frontend URL: {}", frontendUrl);
-        return frontendUrl;
+        log.debug("Using default frontend URL: {}", defaultFrontendUrl);
+        return defaultFrontendUrl;
     }
 
     /**

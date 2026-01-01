@@ -35,10 +35,10 @@ BFF は、Keycloak (VPS1) との連携および、Backend サービスへのル�
 
 | 環境変数                   | 役割                                   | 設定値（例）                                                |
 | :------------------------- | :------------------------------------- | :---------------------------------------------------------- |
-| **`IDP_CLIENT_ID`**        | Keycloak で登録したクライアント ID     | `bff-client`                                                |
+| **`IDP_CLIENT_ID`**        | Keycloak で登録したクライアント ID     | `api-gateway-bff-client`                                    |
 | **`IDP_CLIENT_SECRET`**    | Keycloak のクライアントシークレット    | `xxxxx-xxxxx-secret`                                        |
 | **`IDP_ISSUER_URI`**       | **Keycloak の認証サーバー URL**        | ローカル Keycloak の URL を設定してください。               |
-| **`FRONTEND_URL`**         | OIDC 認証後のリダイレクト先            | `https://localhost:5173`                                    |
+| **`DEFAULT_FRONTEND_URL`** | デフォルトフロントエンドURL（フォールバック用） | `https://localhost:5173`                                    |
 | **`MY_BOOKS_SERVICE_URL`** | **Backend サービスへのルーティング先** | `http://my-books-api:8080` (ローカル開発環境でのコンテナ名) |
 
 > 💡 **OIDC フロー**: 開発用の Keycloak との HTTPS 接続を可能にするため、`Dockerfile` の `development` ステージには、**`mkcert` CA 証明書**が一時的に追加されています。

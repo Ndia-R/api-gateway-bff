@@ -51,10 +51,10 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
     private final DefaultOAuth2AuthorizationRequestResolver defaultResolver;
 
     /**
-     * フロントエンドアプリケーションのURL（デフォルト・フォールバック用）
+     * デフォルトフロントエンドURL（フォールバック用）
      */
-    @Value("${app.frontend.url}")
-    private String frontendUrl;
+    @Value("${app.frontend.default-url}")
+    private String defaultFrontendUrl;
 
     /**
      * CORS許可オリジンリスト（マルチアプリケーション対応）
@@ -172,7 +172,7 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
      * <ol>
      *   <li><b>Refererヘッダー</b>からフルパス抽出（同一VPS + Nginx対応）</li>
      *   <li><b>Originヘッダー</b>（異なるVPS対応）</li>
-     *   <li><b>デフォルトのfrontendUrl</b>（フォールバック）</li>
+     *   <li><b>デフォルトフロントエンドURL</b>（フォールバック）</li>
      * </ol>
      *
      * @param request HTTPリクエスト
@@ -205,8 +205,8 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
         }
 
         // 3. デフォルト値
-        log.debug("Using default frontend URL: {}", this.frontendUrl);
-        return this.frontendUrl;
+        log.debug("Using default frontend URL: {}", this.defaultFrontendUrl);
+        return this.defaultFrontendUrl;
     }
 
     /**

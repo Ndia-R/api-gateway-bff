@@ -34,7 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(AuthController.class)
 @TestPropertySource(properties = {
-    "app.frontend.url=http://localhost:5173",
+    "app.frontend.default-url=http://localhost:5173",
     "CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:*",
     "rate-limit.enabled=false"
 })

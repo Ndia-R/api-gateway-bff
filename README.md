@@ -71,7 +71,7 @@ IDP_CLIENT_SECRET=your-client-secret
 IDP_ISSUER_URI=https://your-idp.com/realms/your-realm
 
 # Application Configuration
-FRONTEND_URL=https://localhost
+DEFAULT_FRONTEND_URL=https://localhost
 SERVICE_01_URL=http://your-api:8080
 SERVICE_01_PATH_PREFIX=/your-service
 ```
@@ -192,7 +192,7 @@ fetch('/api/books', {
 | `IDP_ISSUER_URI` | IDプロバイダーのIssuer URI | - |
 | `IDP_REDIRECT_URI` | OAuth2リダイレクトURI | - |
 | `IDP_POST_LOGOUT_REDIRECT_URI` | ログアウト後のリダイレクトURI | - |
-| `FRONTEND_URL` | フロントエンドURL | - |
+| `DEFAULT_FRONTEND_URL` | デフォルトフロントエンドURL（フォールバック用） | - |
 | `SERVICE_01_URL` | リソースサーバー1のURL | - |
 | `SERVICE_01_PATH_PREFIX` | リソースサーバー1のパスプレフィックス | `/service-01` |
 | `REDIS_HOST` | Redisホスト | `redis` |
@@ -274,7 +274,7 @@ docker compose down -v
 
 ### Keycloak
 ```bash
-IDP_ISSUER_URI=http://auth.localhost:8444/realms/test-realm
+IDP_ISSUER_URI=http://auth.localhost:8444/realms/sample-realm
 ```
 
 ### Auth0
