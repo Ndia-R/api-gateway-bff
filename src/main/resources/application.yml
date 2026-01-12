@@ -33,7 +33,7 @@ spring:
   # Session Configuration
   session:
     store-type: redis
-    timeout: 30m
+    timeout: 2m
     redis:
       flush-mode: on_save
       namespace: spring:session
@@ -53,7 +53,7 @@ server:
         http-only: true
         secure: false
         same-site: lax
-        max-age: 1800
+        max-age: 120
 
 # ============================================
 # Application Configuration
@@ -100,7 +100,7 @@ logging:
   level:
     root: ${LOG_LEVEL:INFO}
     # Spring Security関連のログは警告以上のみ
-    org.springframework.security: WARN
-    org.springframework.security.oauth2: WARN
-    org.springframework.session: WARN
+    org.springframework.security: DEBUG
+    org.springframework.security.oauth2: DEBUG
+    org.springframework.session: DEBUG
 

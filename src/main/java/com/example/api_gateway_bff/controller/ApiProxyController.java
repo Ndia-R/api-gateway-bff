@@ -233,11 +233,29 @@ public class ApiProxyController {
                         .attribute(HttpServletRequest.class.getName(), request)
                         .build();
 
-                    // OAuth2AuthorizedClientManagerでトークンを取得
-                    // - トークンが期限切れの場合、自動的にリフレッシュトークンを使用して更新
-                    // - 新しいトークンはRedisセッションに自動的に保存される
-                    OAuth2AuthorizedClient authorizedClient =
-                        authorizedClientManager.authorize(authorizeRequest);
+                    // ═══════════════════════════════════════════════════════════════
+                    // リフレッシュトークン競合対策: 同期制御
+                    // ═══════════════════════════════════════════════════════════════
+                    // 問題:
+                    //   複数のAPIリクエストが同時に到達すると、両方がアクセストークンの期限切れを検出し、
+                    //   同じリフレッシュトークンでリフレッシュ処理を実行しようとします。
+                    //   Keycloakはリフレッシュトークンの再利用を検出してエラーを返します。
+                    //
+                    // 解決策:
+                    //   authorizedClientManagerをロックとして使用し、同時にリフレッシュ処理を実行できるのは
+                    //   1スレッドのみに制限します。他のスレッドは待機し、リフレッシュ完了後に新しいトークンを取得します。
+                    //
+                    // 参考:
+                    //   https://github.com/spring-projects/spring-security/issues/11461
+                    //   Spring Securityは意図的にフレームワーク側で同期制御を実装していない。
+                    //   アプリケーション側でsynchronizedブロックを使用することを推奨。
+                    OAuth2AuthorizedClient authorizedClient;
+                    synchronized (authorizedClientManager) {
+                        // OAuth2AuthorizedClientManagerでトークンを取得
+                        // - トークンが期限切れの場合、自動的にリフレッシュトークンを使用して更新
+                        // - 新しいトークンはRedisセッションに自動的に保存される
+                        authorizedClient = authorizedClientManager.authorize(authorizeRequest);
+                    }
 
                     if (authorizedClient != null && authorizedClient.getAccessToken() != null) {
                         h.setBearerAuth(authorizedClient.getAccessToken().getTokenValue());

@@ -66,7 +66,8 @@
       "Bash(git show:*)",
       "Bash(tee:*)",
       "Bash(export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64:*)",
-      "Bash(java -version:*)"
+      "Bash(java -version:*)",
+      "mcp__serena__read_file"
     ],
     "deny": [],
     "ask": []
