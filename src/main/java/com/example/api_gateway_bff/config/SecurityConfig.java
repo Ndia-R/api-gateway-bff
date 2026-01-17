@@ -347,7 +347,7 @@ public class SecurityConfig {
                 // フォールバック: defaultFrontendUrlのホストと比較
                 String frontendHost = new URI(defaultFrontendUrl).getHost();
                 return frontendHost != null &&
-                       (frontendHost.equals(redirectUri.getHost()) || "localhost".equals(redirectUri.getHost()));
+                    (frontendHost.equals(redirectUri.getHost()) || "localhost".equals(redirectUri.getHost()));
             }
 
             // CORS_ALLOWED_ORIGINSに含まれているかチェック（ワイルドカード対応）
@@ -369,28 +369,6 @@ public class SecurityConfig {
             return false;
         }
     }
-
-    /**
-     * OAuth2認可クライアント情報の保存先設定
-     *
-     * <p><b>注意:</b> Spring Boot 3.xでは、OAuth2AuthorizedClientRepositoryは自動設定されます。
-     * Spring Session + Redisを使用している場合、自動的にセッションに保存されます。</p>
-     *
-     * <p>このBean定義は削除されました。Spring Bootの自動設定に任せています。</p>
-     *
-     * <h3>自動設定の内容:</h3>
-     * <ul>
-     *   <li><b>保存先</b>: Spring Session (Redis)</li>
-     *   <li><b>保存される情報</b>: アクセストークン、リフレッシュトークン、IDトークン</li>
-     *   <li><b>タイムアウト</b>: セッションタイムアウト（30分）</li>
-     * </ul>
-     *
-     * <p>削除理由: Spring Bootが自動的に適切な実装を提供するため、明示的なBean定義は不要。</p>
-     */
-    // @Bean
-    // public OAuth2AuthorizedClientRepository authorizedClientRepository(...) {
-    // 削除済み - Spring Bootの自動設定を使用
-    // }
 
     /**
      * OAuth2認可クライアントマネージャー（トークン自動リフレッシュ対応）

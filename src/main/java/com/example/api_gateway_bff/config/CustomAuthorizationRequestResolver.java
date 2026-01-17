@@ -1,5 +1,7 @@
 package com.example.api_gateway_bff.config;
 
+import com.example.api_gateway_bff.util.FrontendUrlUtils;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
@@ -9,9 +11,6 @@ import org.springframework.security.oauth2.client.web.DefaultOAuth2Authorization
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
-
-import java.net.URI;
-import java.net.URISyntaxException;
 
 /**
  * カスタムOAuth2認可リクエストリゾルバー
@@ -181,25 +180,14 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
     private String getFrontendUrlFromRequest(HttpServletRequest request) {
         // 1. Refererからフルパスを抽出（同一VPS + Nginx対応）
         String referer = request.getHeader("Referer");
-        if (referer != null && !referer.isBlank()) {
-            try {
-                URI refererUri = new URI(referer);
-                String baseOrigin = refererUri.getScheme() + "://" + refererUri.getAuthority();
-
-                if (isOriginAllowed(baseOrigin)) {
-                    String appBasePath = extractAppBasePath(refererUri.getPath());
-                    String fullUrl = appBasePath != null ? baseOrigin + appBasePath : baseOrigin;
-                    log.debug("Extracted frontend URL from Referer: {}", fullUrl);
-                    return fullUrl;
-                }
-            } catch (URISyntaxException e) {
-                log.warn("Invalid Referer: {}", referer);
-            }
+        String frontendUrl = FrontendUrlUtils.extractFrontendUrlFromReferer(referer, corsAllowedOrigins);
+        if (frontendUrl != null) {
+            return frontendUrl;
         }
 
         // 2. Originのみ（異なるVPS対応）
         String origin = request.getHeader("Origin");
-        if (origin != null && !origin.isBlank() && isOriginAllowed(origin)) {
+        if (origin != null && !origin.isBlank() && FrontendUrlUtils.isOriginAllowed(origin, corsAllowedOrigins)) {
             log.debug("Using Origin header: {}", origin);
             return origin;
         }
@@ -207,68 +195,5 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
         // 3. デフォルト値
         log.debug("Using default frontend URL: {}", this.defaultFrontendUrl);
         return this.defaultFrontendUrl;
-    }
-
-    /**
-     * パスから最初のセグメント（アプリのベースパス）を抽出
-     *
-     * <h3>抽出例:</h3>
-     * <pre>
-     * /my-books/reviews → /my-books
-     * /my-music/playlists → /my-music
-     * /login → null (ルート直下)
-     * </pre>
-     *
-     * @param path リクエストパス
-     * @return アプリのベースパス（存在しない場合はnull）
-     */
-    private String extractAppBasePath(String path) {
-        if (path == null || path.isEmpty() || path.equals("/")) {
-            return null;
-        }
-
-        // 最初のスラッシュを除去してセグメントを取得
-        String[] segments = path.substring(1).split("/");
-
-        if (segments.length > 0 && !segments[0].isEmpty()) {
-            // 特定のパス（BFF自身のエンドポイント）は除外
-            String firstSegment = segments[0];
-            if (firstSegment.equals("bff") || firstSegment.equals("api") ||
-                firstSegment.equals("auth-callback")) {
-                return null;
-            }
-
-            return "/" + firstSegment;
-        }
-
-        return null;
-    }
-
-    /**
-     * Originが許可リストに含まれているか検証
-     *
-     * <p>CORS_ALLOWED_ORIGINSで指定されたオリジンのみを許可します。</p>
-     * <p>ワイルドカード（*）に対応しています。</p>
-     *
-     * @param origin 検証対象のオリジン
-     * @return 許可されている場合はtrue
-     */
-    private boolean isOriginAllowed(String origin) {
-        if (corsAllowedOrigins == null || corsAllowedOrigins.isBlank()) {
-            log.warn("CORS_ALLOWED_ORIGINS not configured, rejecting origin: {}", origin);
-            return false;
-        }
-
-        String[] allowedOrigins = corsAllowedOrigins.split(",");
-        for (String allowed : allowedOrigins) {
-            allowed = allowed.trim();
-            // ワイルドカード対応（例: https://localhost:*）
-            if (origin.matches(allowed.replace("*", ".*").replace(".", "\\."))) {
-                return true;
-            }
-        }
-
-        log.warn("Origin not allowed: {}", origin);
-        return false;
     }
 }

@@ -33,7 +33,7 @@ spring:
   # Session Configuration
   session:
     store-type: redis
-    timeout: 2m
+    timeout: ${SESSION_TIMEOUT:12h}
     redis:
       flush-mode: on_save
       namespace: spring:session
@@ -51,9 +51,9 @@ server:
       cookie:
         name: BFFSESSIONID
         http-only: true
-        secure: false
+        secure: ${SESSION_COOKIE_SECURE:false}
         same-site: lax
-        max-age: 120
+        max-age: ${SESSION_TIMEOUT:12h}
 
 # ============================================
 # Application Configuration

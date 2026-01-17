@@ -67,7 +67,9 @@
       "Bash(tee:*)",
       "Bash(export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64:*)",
       "Bash(java -version:*)",
-      "mcp__serena__read_file"
+      "mcp__serena__read_file",
+      "mcp__serena__initial_instructions",
+      "mcp__serena__find_referencing_symbols"
     ],
     "deny": [],
     "ask": []

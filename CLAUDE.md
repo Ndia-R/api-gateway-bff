@@ -241,9 +241,9 @@ fetch('/api/books', {
 
 ### セッション管理
 - **ストレージ**: Redis
-- **タイムアウト**: 30分
+- **タイムアウト**: 環境変数 `SESSION_TIMEOUT` で設定（デフォルト: 12時間）
 - **Cookie名**: BFFSESSIONID
-- **属性**: HttpOnly, Secure, SameSite=lax
+- **属性**: HttpOnly, Secure（環境変数 `SESSION_COOKIE_SECURE` で設定）, SameSite=lax
 
 ### CORS設定
 - **許可オリジン**: 環境変数 `${CORS_ALLOWED_ORIGINS}` から読み込み
@@ -373,6 +373,18 @@ MY_MUSICS_SERVICE_TIMEOUT=30
 
 # CORS許可オリジン（カンマ区切り）
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:*
+
+# ============================================
+# Session Configuration
+# ============================================
+# セッションタイムアウト（Duration形式: 30m, 12h, 1d など）
+# この値は spring.session.timeout と cookie.max-age の両方に適用されます
+SESSION_TIMEOUT=12h
+
+# セッションCookieのSecure属性
+# - false: HTTP環境（開発環境）
+# - true: HTTPS環境（本番環境）
+SESSION_COOKIE_SECURE=false
 ```
 
 **重要**: `IDP_ISSUER_URI`を使用することで、Spring Securityが自動的に各エンドポイント（authorize, token, jwk, logout）を検出します。個別エンドポイント指定は不要です。

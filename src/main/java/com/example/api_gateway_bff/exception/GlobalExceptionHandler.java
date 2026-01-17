@@ -11,12 +11,18 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.lang.Nullable;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import com.example.api_gateway_bff.dto.ErrorResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 
 import org.springframework.web.reactive.function.client.WebClientException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -50,6 +56,40 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Object> handleUnauthorized(UnauthorizedException ex, WebRequest request) {
         log.warn("認証エラー: {}", ex.getMessage());
 
+        String path = request.getDescription(false).replace("uri=", "");
+        ErrorResponse errorResponse = new ErrorResponse(
+            "UNAUTHORIZED",
+            ex.getMessage(),
+            HttpStatus.UNAUTHORIZED.value(),
+            path
+        );
+        return this.handleExceptionInternal(
+            ex,
+            errorResponse,
+            new HttpHeaders(),
+            HttpStatus.UNAUTHORIZED,
+            request
+        );
+    }
+
+    @ExceptionHandler({ OAuth2AuthorizationException.class })
+    public ResponseEntity<Object> handleOAuth2AuthorizationException(
+        OAuth2AuthorizationException ex,
+        WebRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        log.warn("認証エラー（OAuth2）: {}", ex.getMessage());
+
+        // Spring Securityのセッションを無効化
+        HttpSession session = httpRequest.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+
+        // SecurityContextもクリア
+        SecurityContextHolder.clearContext();
+
+        // エラーレスポンスは401を返す
         String path = request.getDescription(false).replace("uri=", "");
         ErrorResponse errorResponse = new ErrorResponse(
             "UNAUTHORIZED",
