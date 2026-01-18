@@ -58,8 +58,15 @@ class SecurityConfigTest {
     @Test
     void APIプロキシエンドポイントは認証なしでアクセス可能() throws Exception {
         // 注: 実際のルーティングは失敗するが、認証チェックは通過する
+        // 認証エラー(401/403)ではないことを確認
         mockMvc.perform(get("/api/my-books/list"))
-            .andExpect(status().is4xxClientError()); // 404 or 400 (サービスが見つからない)
+            .andExpect(result -> {
+                int status = result.getResponse().getStatus();
+                // 認証エラー（401, 403）ではないことを確認
+                if (status == 401 || status == 403) {
+                    throw new AssertionError("Expected non-auth error but got " + status);
+                }
+            });
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -84,17 +91,27 @@ class SecurityConfigTest {
             .andExpect(status().isForbidden());
     }
 
+    @SuppressWarnings("null")
     @Test
     void POSTリクエストでCSRFトークンがある場合は成功() throws Exception {
-        mockMvc.perform(post("/bff/auth/logout")
-                .with(csrf()))
+        mockMvc.perform(
+            post("/bff/auth/logout")
+                .with(csrf())
+        )
             .andExpect(status().isOk());
     }
 
     @Test
     void GETリクエストはCSRF検証がスキップされる() throws Exception {
+        // CSRF検証は通過することを確認（403 Forbiddenではない）
         mockMvc.perform(get("/api/my-books/list"))
-            .andExpect(status().is4xxClientError()); // CSRF検証は通過、ルーティングエラー
+            .andExpect(result -> {
+                int status = result.getResponse().getStatus();
+                // CSRF拒否（403）ではないことを確認
+                if (status == 403) {
+                    throw new AssertionError("Expected CSRF check to be skipped but got 403 Forbidden");
+                }
+            });
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -105,20 +122,20 @@ class SecurityConfigTest {
 
     // @Test
     // void 許可されたオリジンからのリクエストは成功() throws Exception {
-    //     mockMvc.perform(get("/actuator/health")
-    //             .header("Origin", "http://localhost:5173"))
-    //         .andExpect(status().isOk())
-    //         .andExpect(header().exists("Access-Control-Allow-Origin"));
+    // mockMvc.perform(get("/actuator/health")
+    // .header("Origin", "http://localhost:5173"))
+    // .andExpect(status().isOk())
+    // .andExpect(header().exists("Access-Control-Allow-Origin"));
     // }
 
     // @Test
     // void OPTIONSリクエストでCORSプリフライトが正しく処理される() throws Exception {
-    //     mockMvc.perform(options("/api/my-books/list")
-    //             .header("Origin", "http://localhost:5173")
-    //             .header("Access-Control-Request-Method", "POST")
-    //             .header("Access-Control-Request-Headers", "Content-Type,X-XSRF-TOKEN"))
-    //         .andExpect(status().isOk())
-    //         .andExpect(header().exists("Access-Control-Allow-Origin"))
-    //         .andExpect(header().exists("Access-Control-Allow-Methods"));
+    // mockMvc.perform(options("/api/my-books/list")
+    // .header("Origin", "http://localhost:5173")
+    // .header("Access-Control-Request-Method", "POST")
+    // .header("Access-Control-Request-Headers", "Content-Type,X-XSRF-TOKEN"))
+    // .andExpect(status().isOk())
+    // .andExpect(header().exists("Access-Control-Allow-Origin"))
+    // .andExpect(header().exists("Access-Control-Allow-Methods"));
     // }
 }

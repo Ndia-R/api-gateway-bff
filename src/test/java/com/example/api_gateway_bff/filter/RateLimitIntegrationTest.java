@@ -63,6 +63,7 @@ class RateLimitIntegrationTest {
     // 認証エンドポイントのレート制限テスト
     // ═══════════════════════════════════════════════════════════════
 
+    @SuppressWarnings("null")
     @Test
     void 認証エンドポイントでレート制限を超えると429エラー() throws Exception {
         // 5リクエストまで成功
@@ -109,12 +110,15 @@ class RateLimitIntegrationTest {
         }
     }
 
+    @SuppressWarnings("null")
     @Test
     void ログアウトエンドポイントはレート制限されない() throws Exception {
         // 10リクエスト送信しても成功
         for (int i = 0; i < 10; i++) {
-            mockMvc.perform(post("/bff/auth/logout")
-                    .with(csrf()))
+            mockMvc.perform(
+                post("/bff/auth/logout")
+                    .with(csrf())
+            )
                 .andExpect(status().isOk());
         }
     }
@@ -139,28 +143,34 @@ class RateLimitIntegrationTest {
     void 異なるIPアドレスは独立したレート制限を受ける() throws Exception {
         // 同一IPで5リクエスト（制限到達）
         for (int i = 0; i < 5; i++) {
-            mockMvc.perform(get("/bff/auth/login")
+            mockMvc.perform(
+                get("/bff/auth/login")
                     .with(request -> {
                         request.setRemoteAddr("192.168.1.100");
                         return request;
-                    }))
+                    })
+            )
                 .andExpect(status().is3xxRedirection());
         }
 
         // 同一IPで6リクエスト目は429エラー
-        mockMvc.perform(get("/bff/auth/login")
+        mockMvc.perform(
+            get("/bff/auth/login")
                 .with(request -> {
                     request.setRemoteAddr("192.168.1.100");
                     return request;
-                }))
+                })
+        )
             .andExpect(status().isTooManyRequests());
 
         // 異なるIPからのリクエストは成功
-        mockMvc.perform(get("/bff/auth/login")
+        mockMvc.perform(
+            get("/bff/auth/login")
                 .with(request -> {
                     request.setRemoteAddr("192.168.1.200");
                     return request;
-                }))
+                })
+        )
             .andExpect(status().is3xxRedirection());
     }
 }

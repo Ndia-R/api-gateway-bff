@@ -4,7 +4,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -25,8 +24,6 @@ import reactor.core.publisher.Mono;
 
 import com.example.api_gateway_bff.config.ResourceServerProperties;
 import com.example.api_gateway_bff.config.ResourceServerProperties.ServerConfig;
-
-import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -54,6 +51,7 @@ import static org.mockito.Mockito.*;
  * <p><b>注意:</b> このテストはWebClientの複雑なモックが必要なため、現在無効化しています。
  * 実際のAPIプロキシの動作はSecurityConfigTestで簡単な統合テストとして確認します。</p>
  */
+@SuppressWarnings({"unchecked", "rawtypes", "null"})
 @Disabled("WebClientのモックが複雑なため無効化")
 @ExtendWith(MockitoExtension.class)
 class ApiProxyControllerTest {
@@ -64,15 +62,12 @@ class ApiProxyControllerTest {
     @Mock
     private WebClient webClient;
 
-    @SuppressWarnings("rawtypes")
     @Mock
     private WebClient.RequestBodyUriSpec requestBodyUriSpec;
 
-    @SuppressWarnings("rawtypes")
     @Mock
     private WebClient.RequestBodySpec requestBodySpec;
 
-    @SuppressWarnings("rawtypes")
     @Mock
     private WebClient.RequestHeadersSpec requestHeadersSpec;
 
@@ -132,7 +127,9 @@ class ApiProxyControllerTest {
 
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        verify(requestBodyUriSpec).uri((java.util.function.Function<org.springframework.web.util.UriBuilder, java.net.URI>) any());
+        verify(requestBodyUriSpec).uri(
+            (java.util.function.Function<org.springframework.web.util.UriBuilder, java.net.URI>) any()
+        );
     }
 
     @Test
@@ -237,7 +234,9 @@ class ApiProxyControllerTest {
 
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        verify(requestBodyUriSpec).uri((java.util.function.Function<org.springframework.web.util.UriBuilder, java.net.URI>) any());
+        verify(requestBodyUriSpec).uri(
+            (java.util.function.Function<org.springframework.web.util.UriBuilder, java.net.URI>) any()
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -277,12 +276,10 @@ class ApiProxyControllerTest {
     // ヘルパーメソッド
     // ═══════════════════════════════════════════════════════════════
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private void setupWebClientMock(HttpStatus status, String body) {
         setupWebClientMockWithHeaders(status, body, new HttpHeaders());
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private void setupWebClientMockWithHeaders(HttpStatus status, String body, HttpHeaders headers) {
         // WebClientのメソッドチェーンをモック
         when(webClient.method(any())).thenReturn(requestBodyUriSpec);

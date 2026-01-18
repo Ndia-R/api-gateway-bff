@@ -68,8 +68,10 @@ class AuthControllerTest {
     @Test
     @WithMockUser
     void return_toパラメータがある場合クエリパラメータとして付与される() throws Exception {
-        mockMvc.perform(get("/bff/auth/login")
-                .param("return_to", "/my-reviews"))
+        mockMvc.perform(
+            get("/bff/auth/login")
+                .param("return_to", "/my-reviews")
+        )
             .andExpect(status().is3xxRedirection())
             .andExpect(redirectedUrl("http://localhost:5173/auth-callback?return_to=%2Fmy-reviews"));
     }
@@ -77,8 +79,10 @@ class AuthControllerTest {
     @Test
     @WithMockUser
     void Refererヘッダーからフロントエンドベースパスを抽出してリダイレクト() throws Exception {
-        mockMvc.perform(get("/bff/auth/login")
-                .header("Referer", "http://localhost:5173/my-books/reviews"))
+        mockMvc.perform(
+            get("/bff/auth/login")
+                .header("Referer", "http://localhost:5173/my-books/reviews")
+        )
             .andExpect(status().is3xxRedirection())
             .andExpect(redirectedUrl("http://localhost:5173/my-books/auth-callback"));
     }
@@ -87,25 +91,32 @@ class AuthControllerTest {
     // ログアウトエンドポイントのテスト
     // ═══════════════════════════════════════════════════════════════
 
+    @SuppressWarnings("null")
     @Test
     @WithMockUser
     void 通常ログアウトが成功する() throws Exception {
-        mockMvc.perform(post("/bff/auth/logout")
-                .with(csrf()))
+        mockMvc.perform(
+            post("/bff/auth/logout")
+                .with(csrf())
+        )
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.message").value("success"));
     }
 
+    @SuppressWarnings("null")
     @Test
     @WithMockUser
     void 完全ログアウトが成功する() throws Exception {
-        mockMvc.perform(post("/bff/auth/logout")
+        mockMvc.perform(
+            post("/bff/auth/logout")
                 .param("complete", "true")
-                .with(csrf()))
+                .with(csrf())
+        )
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.message").value("success"));
     }
 
+    @SuppressWarnings("null")
     @Test
     @WithMockUser
     void ログアウト時にOIDCプロバイダー接続失敗でも警告を含むレスポンスが返る() throws Exception {
@@ -113,9 +124,11 @@ class AuthControllerTest {
         when(authService.logout(any(), any(), any(), anyBoolean()))
             .thenReturn(new LogoutResponse("success", "認証サーバーのログアウトに失敗しました。"));
 
-        mockMvc.perform(post("/bff/auth/logout")
+        mockMvc.perform(
+            post("/bff/auth/logout")
                 .param("complete", "true")
-                .with(csrf()))
+                .with(csrf())
+        )
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.message").value("success"))
             .andExpect(jsonPath("$.warning").value("認証サーバーのログアウトに失敗しました。"));
@@ -128,8 +141,10 @@ class AuthControllerTest {
     @Test
     @WithMockUser
     void 不正なOriginヘッダーの場合デフォルトURLにフォールバック() throws Exception {
-        mockMvc.perform(get("/bff/auth/login")
-                .header("Origin", "http://malicious-site.com"))
+        mockMvc.perform(
+            get("/bff/auth/login")
+                .header("Origin", "http://malicious-site.com")
+        )
             .andExpect(status().is3xxRedirection())
             .andExpect(redirectedUrlPattern("http://localhost:5173/auth-callback*"));
     }

@@ -41,13 +41,13 @@ import static org.mockito.Mockito.*;
  *   <li>OIDCプロバイダー接続失敗時の動作</li>
  * </ul>
  */
+@SuppressWarnings({ "rawtypes", "unchecked" })
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
     @Mock
     private WebClient webClient;
 
-    @SuppressWarnings("rawtypes")
     @Mock
     private WebClient.RequestHeadersUriSpec requestHeadersUriSpec;
 
@@ -66,6 +66,7 @@ class AuthServiceTest {
     @InjectMocks
     private AuthService authService;
 
+    @SuppressWarnings("null")
     @BeforeEach
     void setUp() {
         // SecurityContextをクリア
@@ -102,6 +103,7 @@ class AuthServiceTest {
     // 完全ログアウトのテスト（成功ケース）
     // ═══════════════════════════════════════════════════════════════
 
+    @SuppressWarnings("null")
     @Test
     void 完全ログアウトでOIDCプロバイダーにログアウトリクエストが送信される() {
         // Arrange
@@ -141,6 +143,7 @@ class AuthServiceTest {
     // 完全ログアウトのテスト（失敗ケース）
     // ═══════════════════════════════════════════════════════════════
 
+    @SuppressWarnings("null")
     @Test
     void OIDCプロバイダー接続失敗時もBFFログアウトは成功する() {
         // Arrange
