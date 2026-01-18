@@ -33,10 +33,11 @@ services:
       SERVICE_01_URL: ${SERVICE_01_URL}
       SERVICE_01_PATH_PREFIX: ${SERVICE_01_PATH_PREFIX}
       # Session Configuration
-      SESSION_TIMEOUT: ${SESSION_TIMEOUT:-12h}
-      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      SESSION_TIMEOUT: ${SESSION_TIMEOUT}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE}
       # Logging Settings
-      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      LOG_LEVEL_SECURITY: ${LOG_LEVEL_SECURITY}
     volumes:
       - .:/workspace
       - gradle-cache:/home/vscode/.gradle

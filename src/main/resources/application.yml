@@ -33,7 +33,7 @@ spring:
   # Session Configuration
   session:
     store-type: redis
-    timeout: ${SESSION_TIMEOUT:12h}
+    timeout: ${SESSION_TIMEOUT}
     redis:
       flush-mode: on_save
       namespace: spring:session
@@ -51,9 +51,9 @@ server:
       cookie:
         name: BFFSESSIONID
         http-only: true
-        secure: ${SESSION_COOKIE_SECURE:false}
+        secure: ${SESSION_COOKIE_SECURE}
         same-site: lax
-        max-age: ${SESSION_TIMEOUT:12h}
+        max-age: ${SESSION_TIMEOUT}
 
 # ============================================
 # Application Configuration
@@ -98,9 +98,9 @@ management:
 # ============================================
 logging:
   level:
-    root: ${LOG_LEVEL:INFO}
-    # Spring Security関連のログは警告以上のみ
-    org.springframework.security: DEBUG
-    org.springframework.security.oauth2: DEBUG
-    org.springframework.session: DEBUG
+    root: ${LOG_LEVEL}
+    # Spring Security関連のログ
+    org.springframework.security: ${LOG_LEVEL_SECURITY}
+    org.springframework.security.oauth2: ${LOG_LEVEL_SECURITY}
+    org.springframework.session: ${LOG_LEVEL_SECURITY}
 
