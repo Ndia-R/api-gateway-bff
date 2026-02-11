@@ -135,6 +135,35 @@ public class AuthController {
         response.sendRedirect(redirectUrl);
     }
 
+    /**
+     * サインアップエンドポイント
+     *
+     * <p>このエンドポイントに未認証ユーザーがアクセスすると、Spring SecurityがIdP（Keycloak）の
+     * <b>登録ページ</b>へリダイレクトします。</p>
+     * <p>この動作は {@link com.example.api_gateway_bff.config.CustomAuthorizationRequestResolver}
+     * によって制御されます。</p>
+     * <p>認証済みユーザーがアクセスした場合は、すでに登録済みであるため、
+     * フロントエンドの認証後コールバックページへリダイレクトします。</p>
+     *
+     * @param returnTo 登録・認証後の復帰先URL（例: /my-reviews）。省略可能。
+     * @param request HTTPリクエスト
+     * @param session HTTPセッション
+     * @param response HTTPレスポンス
+     */
+    @GetMapping("/signup")
+    public void signup(
+        @RequestParam(name = "return_to", required = false) String returnTo,
+        HttpServletRequest request,
+        HttpSession session,
+        HttpServletResponse response
+    ) throws IOException {
+        log.debug("User accessing /bff/auth/signup");
+
+        // 認証済みの場合は/auth-callbackにリダイレクトするloginメソッドのロジックを再利用
+        // 未認証の場合は、CustomAuthorizationRequestResolverによってIdPの登録ページへリダイレクトされる
+        login(returnTo, request, session, response);
+    }
+
     @PostMapping("/logout")
     public ResponseEntity<LogoutResponse> logout(
         HttpServletRequest request,

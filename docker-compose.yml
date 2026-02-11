@@ -22,6 +22,7 @@ services:
       IDP_CLIENT_ID: ${IDP_CLIENT_ID}
       IDP_CLIENT_SECRET: ${IDP_CLIENT_SECRET}
       IDP_ISSUER_URI: ${IDP_ISSUER_URI}
+      IDP_REGISTRATION_PATH: ${IDP_REGISTRATION_PATH}
       # BFF関連のURL（VPS_HOSTNAMEから組み立てる）
       IDP_REDIRECT_URI: https://${VPS_HOSTNAME}/bff/login/oauth2/code/idp
       IDP_POST_LOGOUT_REDIRECT_URI: https://${VPS_HOSTNAME}/logout-complete

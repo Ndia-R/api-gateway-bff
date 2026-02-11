@@ -62,6 +62,10 @@ app:
   # デフォルトフロントエンドURL（フォールバック用）
   frontend:
     default-url: ${DEFAULT_FRONTEND_URL}
+  oauth2:
+    # IdPの登録エンドポイントへのパス（issuer-uriからの相対パス）
+    # 空にした場合、サインアップ機能は通常のログインフローにフォールバックします
+    registration-path: ${IDP_REGISTRATION_PATH}
 
 # ============================================
 # Rate Limit Configuration

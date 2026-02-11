@@ -5,12 +5,19 @@ import com.example.api_gateway_bff.util.FrontendUrlUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.savedrequest.RequestCache;
+import org.springframework.security.web.savedrequest.SavedRequest;
+import java.net.URI;
+import java.net.URISyntaxException;
 
 /**
  * カスタムOAuth2認可リクエストリゾルバー
@@ -18,16 +25,20 @@ import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequ
  * <p>このクラスは、OAuth2認証フロー開始時に以下の処理を行います：</p>
  * <ul>
  *   <li>PKCE (Proof Key for Code Exchange) の適用</li>
- *   <li><code>return_to</code>パラメータをセッションに保存</li>
+ *   <li><code>return_to</code>パラメータと元のフロントエンドURLをセッションに保存</li>
+ *   <li>サインアップリクエストをIdPの登録エンドポイントにルーティング</li>
  * </ul>
  *
  * <h3>処理フロー:</h3>
  * <pre>
- * 1. 未認証ユーザーが /bff/auth/login?return_to=/my-reviews にアクセス
- * 2. Spring Securityがこのリゾルバーを呼び出し
- * 3. return_toパラメータを取得してセッションに保存
- * 4. PKCEを適用したOAuth2認可リクエストを生成
- * 5. IdPの認可エンドポイントにリダイレクト
+ * 1. 未認証ユーザーが /bff/auth/login または /bff/auth/signup にアクセス
+ * 2. Spring Securityが認証を要求し、このリゾルバーを呼び出し
+ * 3. セッションに保存された `SavedRequest` から本来のリクエストURIを取得
+ * 4. URIに応じて、ログインまたはサインアップの処理を分岐
+ *   - サインアップの場合: IdPの登録エンドポイントURIを構築
+ *   - ログインの場合: IdPの認証エンドポイントURIをそのまま利用
+ * 5. PKCEパラメータを付与したOAuth2認可リクエストを生成
+ * 6. 最終的なURIにリダイレクト
  * </pre>
  *
  * <h3>実装方式:</h3>
@@ -43,21 +54,18 @@ import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequ
 @Slf4j
 public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRequestResolver {
 
-    /**
-     * デリゲート先のデフォルトリゾルバー
-     * <p>PKCE対応とOAuth2標準処理を委譲</p>
-     */
     private final DefaultOAuth2AuthorizationRequestResolver defaultResolver;
+    private final RequestCache requestCache = new HttpSessionRequestCache();
 
-    /**
-     * デフォルトフロントエンドURL（フォールバック用）
-     */
+    @Autowired
+    private ClientRegistrationRepository clientRegistrationRepository;
+
+    @Value("${app.oauth2.registration-path:}")
+    private String registrationPath;
+
     @Value("${app.frontend.default-url}")
     private String defaultFrontendUrl;
 
-    /**
-     * CORS許可オリジンリスト（マルチアプリケーション対応）
-     */
     @Value("${CORS_ALLOWED_ORIGINS:}")
     private String corsAllowedOrigins;
 
@@ -71,14 +79,10 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
         ClientRegistrationRepository clientRegistrationRepository,
         String authorizationRequestBaseUri
     ) {
-        // デフォルトリゾルバーを作成
         this.defaultResolver = new DefaultOAuth2AuthorizationRequestResolver(
             clientRegistrationRepository,
             authorizationRequestBaseUri
         );
-
-        // PKCEカスタマイザーを適用
-        // code_challengeとcode_verifierを自動生成
         this.defaultResolver.setAuthorizationRequestCustomizer(
             OAuth2AuthorizationRequestCustomizers.withPkce()
         );
@@ -88,26 +92,59 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
      * OAuth2認可リクエストを解決（カスタマイズ）
      *
      * <p>このメソッドは、Spring SecurityがOAuth2認証フローを開始する際に呼び出されます。</p>
-     * <p>return_toパラメータをセッションに保存することで、認証完了後にフロントエンドに渡すことができます。</p>
+     * <p>本来のリクエストURIをセッションから復元し、サインアップリクエストの場合は
+     * IdPの登録エンドポイントにリダイレクトするようリクエストをカスタマイズします。</p>
      *
      * @param request HTTPリクエスト
      * @return OAuth2認可リクエスト（PKCEパラメータ含む）
      */
     @Override
     public OAuth2AuthorizationRequest resolve(HttpServletRequest request) {
-        // デフォルトのOAuth2認可リクエストを生成（PKCE適用済み）
         OAuth2AuthorizationRequest authorizationRequest = this.defaultResolver.resolve(request);
+        if (authorizationRequest == null) {
+            return null;
+        }
 
-        // OAuth2認証フローが必要な場合のみログ出力
-        if (authorizationRequest != null) {
-            log.info("=== OAuth2 Authorization Flow Started ===");
-            log.info("Request URI: {}", request.getRequestURI());
-            log.info("Query String: {}", request.getQueryString());
+        // 元のリクエストURIを取得
+        SavedRequest savedRequest = this.requestCache.getRequest(request, null);
+        String originalRequestUri = null;
+        if (savedRequest != null) {
+            try {
+                originalRequestUri = new URI(savedRequest.getRedirectUrl()).getPath();
+            } catch (URISyntaxException e) {
+                log.warn("Could not parse URI from SavedRequest", e);
+            }
+        }
 
-            // return_toパラメータをセッションに保存
-            saveReturnToParameter(request);
+        log.info("=== OAuth2 Authorization Flow Started ===");
+        log.info("Request URI (internal): {}", request.getRequestURI());
+        log.info("Original Request URI: {}", originalRequestUri);
 
-            log.info("Authorization URI: {}", authorizationRequest.getAuthorizationUri());
+        saveReturnToParameter(request);
+
+        // サインアップリクエストの場合
+        if ("/bff/auth/signup".equals(originalRequestUri)) {
+            // registration-pathが設定されていなければ、通常のログインフローにフォールバック
+            if (registrationPath == null || registrationPath.isBlank()) {
+                log.warn("Sign-up is not supported: app.oauth2.registration-path is not configured. Falling back to login.");
+                return authorizationRequest;
+            }
+
+            log.info("Sign-up request detected. Building URI for registration.");
+            String registrationId = "idp";
+            ClientRegistration clientRegistration = clientRegistrationRepository.findByRegistrationId(registrationId);
+            String issuerUri = clientRegistration.getProviderDetails().getIssuerUri();
+            
+            // issuer-uriと登録パスを結合して、最終的な登録URIを構築
+            String registrationUriString = issuerUri.endsWith("/") ? issuerUri.substring(0, issuerUri.length() - 1) : issuerUri;
+            registrationUriString += registrationPath;
+
+            log.info("Redirecting to registration URI: {}", registrationUriString);
+
+            // パラメータは維持しつつ、URIだけを差し替えた新しいリクエストを構築
+            return OAuth2AuthorizationRequest.from(authorizationRequest)
+                .authorizationUri(registrationUriString)
+                .build();
         }
 
         return authorizationRequest;
@@ -124,15 +161,13 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
      */
     @Override
     public OAuth2AuthorizationRequest resolve(HttpServletRequest request, String clientRegistrationId) {
-        log.info("=== OAuth2 Authorization Flow Started (Client: {}) ===", clientRegistrationId);
-        log.info("Request URI: {}", request.getRequestURI());
-        log.info("Query String: {}", request.getQueryString());
-
-        // return_toパラメータをセッションに保存
+        OAuth2AuthorizationRequest authorizationRequest = this.defaultResolver.resolve(request, clientRegistrationId);
+        if (authorizationRequest == null) {
+            return null;
+        }
+        // このフローでも `return_to` を保存する
         saveReturnToParameter(request);
-
-        // デフォルトのOAuth2認可リクエストを生成（PKCE適用済み）
-        return this.defaultResolver.resolve(request, clientRegistrationId);
+        return authorizationRequest;
     }
 
     /**
@@ -148,17 +183,11 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
      */
     private void saveReturnToParameter(HttpServletRequest request) {
         HttpSession session = request.getSession();
-
-        // 1. return_toパラメータを保存
         String returnTo = request.getParameter("return_to");
         if (returnTo != null && !returnTo.isBlank()) {
             session.setAttribute("redirect_after_login", returnTo);
             log.info("Saved 'redirect_after_login' to session: {} (Session ID: {})", returnTo, session.getId());
-        } else {
-            log.debug("No return_to parameter in request");
         }
-
-        // 2. Referer/Originヘッダーからフロントエンドのベースパスを抽出してセッションに保存（マルチアプリ対応）
         String frontendUrl = getFrontendUrlFromRequest(request);
         session.setAttribute("original_frontend_url", frontendUrl);
         log.info("Saved 'original_frontend_url' to session: {} (Session ID: {})", frontendUrl, session.getId());
@@ -178,21 +207,16 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
      * @return フロントエンドのベースURL
      */
     private String getFrontendUrlFromRequest(HttpServletRequest request) {
-        // 1. Refererからフルパスを抽出（同一VPS + Nginx対応）
         String referer = request.getHeader("Referer");
         String frontendUrl = FrontendUrlUtils.extractFrontendUrlFromReferer(referer, corsAllowedOrigins);
         if (frontendUrl != null) {
             return frontendUrl;
         }
-
-        // 2. Originのみ（異なるVPS対応）
         String origin = request.getHeader("Origin");
         if (origin != null && !origin.isBlank() && FrontendUrlUtils.isOriginAllowed(origin, corsAllowedOrigins)) {
             log.debug("Using Origin header: {}", origin);
             return origin;
         }
-
-        // 3. デフォルト値
         log.debug("Using default frontend URL: {}", this.defaultFrontendUrl);
         return this.defaultFrontendUrl;
     }
