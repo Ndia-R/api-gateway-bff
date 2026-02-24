@@ -105,7 +105,24 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
             return null;
         }
 
-        // 元のリクエストURIを取得
+        // 認証済みユーザーのパスワード変更フロー:
+        // AuthControllerが session["pending_kc_action"] を設定した後、/oauth2/authorization/idp にリダイレクトし、
+        // Spring SecurityのOAuth2AuthorizationRequestRedirectFilterがこのresolve(request)を呼ぶ。
+        // AuthControllerがすでに original_frontend_url / redirect_after_login を保存済みのため
+        // saveReturnToParameter() による上書きを避け、kc_action のみを付加する。
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            String kcAction = (String) session.getAttribute("pending_kc_action");
+            if (kcAction != null) {
+                session.removeAttribute("pending_kc_action");
+                log.info("pending_kc_action detected: adding kc_action={} to authorization request.", kcAction);
+                return OAuth2AuthorizationRequest.from(authorizationRequest)
+                    .additionalParameters(params -> params.put("kc_action", kcAction))
+                    .build();
+            }
+        }
+
+        // 元のリクエストURIを取得（未認証ユーザーがBFFのprotectedエンドポイントにアクセスした場合）
         SavedRequest savedRequest = this.requestCache.getRequest(request, null);
         String originalRequestUri = null;
         if (savedRequest != null) {
@@ -134,7 +151,7 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
             String registrationId = "idp";
             ClientRegistration clientRegistration = clientRegistrationRepository.findByRegistrationId(registrationId);
             String issuerUri = clientRegistration.getProviderDetails().getIssuerUri();
-            
+
             // issuer-uriと登録パスを結合して、最終的な登録URIを構築
             String registrationUriString = issuerUri.endsWith("/") ? issuerUri.substring(0, issuerUri.length() - 1) : issuerUri;
             registrationUriString += registrationPath;

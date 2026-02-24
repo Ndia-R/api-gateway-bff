@@ -2,12 +2,12 @@
 
 ## 1. 設計方針: 「権限」と「役割」との分離
 
-本設計では、ロールを **「権限 (Permission)」**と **「役割 (Role)」** の 2 層構造で管理します。
+本設計では、ロールを **「権限 (Permission)」** と **「役割 (Role)」** の 2 層構造で管理します。
 
-| 要素                       | 用途                                 | 例                                       |
-| -------------------------- | ------------------------------------ | ---------------------------------------- |
-| **権限 (Permission)**            | 「何ができるか」という最小単位の権限 | `book-content:read`, `review:delete:own` |
-| **役割 (Role)** | 職務に応じた権限の集まり       | `ui:premium-user`, `ui:moderator`        |
+| 要素                  | 用途                                 | 例                                       |
+| --------------------- | ------------------------------------ | ---------------------------------------- |
+| **権限 (Permission)** | 「何ができるか」という最小単位の権限 | `book-content:read`, `review:delete:own` |
+| **役割 (Role)**       | 職務に応じた権限の集まり             | `ui:premium-user`, `ui:moderator`        |
 
 ## 2. 権限 (Permission) の命名規則
 
@@ -23,7 +23,7 @@
 
 3. スコープ (Scope): どのデータを対象とするか（誰の/どの範囲の）
 
-   例: any, own, department, team
+   例: all, own, department, team
 
 ### アクション (Action)
 
@@ -36,7 +36,6 @@
 | `update`   | データの編集                                     | update..., patch...        |
 | `delete`   | データの削除                                     | delete..., remove...       |
 | `manage`   | read / create / update / delete をすべて包含する |                            |
-| `exec`     | 計算やバッチ、送金などの実行                     | execute..., process...     |
 
 - 判定ロジックでは `manage` を最優先で許可とし、必要に応じて `read`, `create`, ... などを追加する。
 
@@ -46,7 +45,7 @@
 
 | スコープ     | 意味                     | 判定ロジックの基準                      |
 | ------------ | ------------------------ | --------------------------------------- |
-| `any`        | すべてのデータ           |                                         |
+| `all`        | すべてのデータ           |                                         |
 | `own`        | 自身のデータのみ         | data.userId === user.id                 |
 | `department` | 所属組織内のデータのみ   | data.departmentId === user.departmentId |
 | `team`       | 所属チーム内のデータのみ | data.teamId === userteamId              |
@@ -56,14 +55,15 @@
 
 | 対象             | 単一権限 (Permission)   | 説明                                                 |
 | ---------------- | ----------------------- | ---------------------------------------------------- |
-| **書籍**         | `book:manage:any`       | すべての書籍を閲覧・作成・編集・削除できる権限       |
-|                  | `book-content:read:any` | すべての有料コンテンツを閲覧できる権限               |
+| **書籍**         | `book:manage:all`       | すべての書籍を閲覧・作成・編集・削除できる権限       |
+|                  | `book-content:read:all` | すべての有料コンテンツを閲覧できる権限               |
 | **お気に入り**   | `favorite:manage:own`   | 自身のお気に入りを閲覧・作成・編集・削除できる権限   |
 | **ブックマーク** | `bookmark:manage:own`   | 自身のブックマークを閲覧・作成・編集・削除できる権限 |
-| **レビュー**     | `review:manage:own`     | 自身のレビューを閲覧・作成・編集・削除できる権限     |
-|                  | `review:delete:any`     | すべてのレビューを削除できる権限                     |
-| **ジャンル**     | `genre:manage:any`      | すべてのジャンルを閲覧・作成・編集・削除できる権限   |
-| **ユーザー**     | `user:manage:any`       | すべてのユーザーを閲覧・作成・編集・削除できる権限   |
+| **レビュー**     | `review:read:all`       | すべてのレビューを閲覧できる権限                     |
+|                  | `review:manage:own`     | 自身のレビューを閲覧・作成・編集・削除できる権限     |
+|                  | `review:delete:all`     | すべてのレビューを削除できる権限                     |
+| **ジャンル**     | `genre:manage:all`      | すべてのジャンルを閲覧・作成・編集・削除できる権限   |
+| **ユーザー**     | `user:manage:all`       | すべてのユーザーを閲覧・作成・編集・削除できる権限   |
 |                  | `user:read:own`         | 自身のプロフィールを閲覧できる権限                   |
 |                  | `user:update:own`       | 自身のプロフィールを編集できる権限                   |
 
@@ -73,13 +73,13 @@
 
 アプリケーションで利用する主な役割として、以下の 5 つを定義します。この役割 (Role) は権限の組み合わせで作成する。
 
-| 役割 (Permission)             | 説明                          | 想定ユーザー                                                                                   |
-| ----------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------- |
-| なし                    | **未ログインユーザー**        | 未ログインユーザー。書籍の検索、概要や目次の閲覧、書籍へのレビュー一覧などは見れる。           |
-| **`USER`**   | **承認済みユーザー**        | 未ログインユーザーのできることに加え、レビュー投稿、ブックマーク管理など追加機能へのアクセスが可能。ユーザー情報の中のsubscriptionPlanの情報を元にできる範囲は制限される。 |
-| **`CONTENT_EDITOR`** | **コンテンツ編集者**          | 書籍のメタデータやジャンルを管理するスタッフ。                                                 |
-| **`MODERATOR`**      | **コミュニティ管理者**        | 不適切なレビューの削除など、コミュニティの健全性を維持するスタッフ。                           |
-| **`ADMIN`**          | **システム管理者**            | すべての権限を持つシステム管理者。ユーザー管理やシステム設定も可能。                           |
+| 役割 (Permission)    | 説明                   | 想定ユーザー                                                                                                                                                               |
+| -------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| なし                 | **未ログインユーザー** | 未ログインユーザー。書籍の検索、概要や目次の閲覧、書籍へのレビュー一覧などは見れる。                                                                                       |
+| **`USER`**           | **承認済みユーザー**   | 未ログインユーザーのできることに加え、レビュー投稿、ブックマーク管理など追加機能へのアクセスが可能。ユーザー情報の中のsubscriptionPlanの情報を元にできる範囲は制限される。 |
+| **`CONTENT_EDITOR`** | **コンテンツ編集者**   | 書籍のメタデータやジャンルを管理するスタッフ。                                                                                                                             |
+| **`MODERATOR`**      | **コミュニティ管理者** | 不適切なレビューの削除など、コミュニティの健全性を維持するスタッフ。                                                                                                       |
+| **`ADMIN`**          | **システム管理者**     | すべての権限を持つシステム管理者。ユーザー管理やシステム設定も可能。                                                                                                       |
 
 ※フロントエンドは、**「役割 (Role)」** を元にアクセス管理を行う。
 
@@ -89,14 +89,15 @@
 
 | 権限                    | `USER` | `CONTENT_EDITOR` | `MODERATOR` | `ADMIN` |
 | ----------------------- | :----: | :--------------: | :---------: | :-----: |
-| `book:manage:any`       |        |        ✅        |             |   ✅    |
-| `book-content:read:any` |   ✅   |                  |             |   ✅    |
+| `book:manage:all`       |        |        ✅        |             |   ✅    |
+| `book-content:read:all` |   ✅   |                  |             |   ✅    |
 | `favorite:manage:own`   |   ✅   |                  |             |   ✅    |
 | `bookmark:manage:own`   |   ✅   |                  |             |   ✅    |
+| `review:read:all`       |   ✅   |                  |     ✅      |   ✅    |
 | `review:manage:own`     |   ✅   |                  |             |   ✅    |
-| `review:delete:any`     |        |                  |     ✅      |   ✅    |
-| `genre:manage:any`      |        |        ✅        |             |   ✅    |
-| `user:manage:any`       |        |                  |             |   ✅    |
+| `review:delete:all`     |        |                  |     ✅      |   ✅    |
+| `genre:manage:all`      |        |        ✅        |             |   ✅    |
+| `user:manage:all`       |        |                  |             |   ✅    |
 | `user:read:own`         |   ✅   |                  |             |   ✅    |
 | `user:update:own`       |   ✅   |                  |             |   ✅    |
 
@@ -155,16 +156,17 @@ application.yml から roles をキーに検索
 roles:
   mappings:
     USER:
-      - book-content:read:any      ← これらに展開
+      - book-content:read:all      ← これらに展開
       - favorite:manage:own
       - bookmark:manage:own
+      - review:read:all
       - review:manage:own
       - user:read:own
       - user:update:own
   ↓
 Spring Security の GrantedAuthority に変換
   ↓
-@PreAuthorize("hasAuthority('book-content:read:any')") で使用
+@PreAuthorize("hasAuthority('book-content:read:all')") で使用
 ```
 
 - API のエンドポイント保護には、役割 (Role) ではなく、**権限 (Permission)** を直接指定することを推奨します。これにより、API が必要とする権限が明確になります。
@@ -172,9 +174,9 @@ Spring Security の GrantedAuthority に変換
 
 ```java
 // SecurityConfig.java
-.requestMatchers(HttpMethod.POST, "/api/books").hasAuthority("book:manage:any")
+.requestMatchers(HttpMethod.POST, "/api/books").hasAuthority("book:manage:all")
 .requestMatchers(HttpMethod.DELETE, "/api/bookmarks/**").hasAuthority("bookmark:manage:own")
-.requestMatchers(HttpMethod.GET, "/api/book-content/**").hasAuthority("book-content:read:any")
+.requestMatchers(HttpMethod.GET, "/api/book-content/**").hasAuthority("book-content:read:all")
 
 // BookmarkServiceImpl.java
 @Override
@@ -201,7 +203,7 @@ public void deleteBookmark(@NonNull Long id) {
 - フロントエンドは /me/profile からロールを含むプロフィールを取得し、UI表示制御に利用する。
 - UI 要素（ボタン、メニューなど）の表示/非表示の制御に **ロール (Role)** を使用します。
 - `useAuth` のようなカスタムフック（全体で使うプロバイダー）で、ユーザーが持つロールを簡単に判定できるようにします。
-- プロフィール情報に含まれているsubscriptionPlanの値を元に閲覧できる範囲などを制御する。
+- プロフィール情報に含まれている `subscriptionPlan` の値を元に閲覧できる範囲などを制御する。
 
 ```mermaid
 sequenceDiagram
@@ -306,13 +308,13 @@ export default function RoleGuard({ roles, children }: Props) {
 
 ### グループ (Group) と ロール (Role) の紐付け
 
-| グループ (Group)             | 紐付ける役割 (Role)    |
-| ---------------------------- | --------------------- |
-| `/users/domestic-users`      | -                     |
-| `/users/international-users` | -                     |
-| `/staff/admins`              | `ROLE_ADMIN`          |
-| `/staff/content-editors`     | `ROLE_CONTENT_EDITOR` |
-| `/staff/moderators`          | `ROLE_MODERATOR`      |
+| グループ (Group)             | 紐付ける役割 (Role)   | グループとしての意味   |
+| ---------------------------- | --------------------- | ---------------------- |
+| `/users/domestic-users`      | -                     | 国内ユーザー           |
+| `/users/international-users` | -                     | 海外ユーザー           |
+| `/staff/admins`              | `ROLE_ADMIN`          | システム管理者         |
+| `/staff/content-editors`     | `ROLE_CONTENT_EDITOR` | コンテンツ編集チーム   |
+| `/staff/moderators`          | `ROLE_MODERATOR`      | コミュニティ管理チーム |
 
 ### Group 活用のメリット: 役割変更の簡素化
 
@@ -333,7 +335,7 @@ export default function RoleGuard({ roles, children }: Props) {
 
 2. 「manage」権限を戦略的に使う
 
-   細かく分けすぎると管理が破綻します。「コンテンツ編集者なら書籍の作成・編集・削除すべてできて当然」というリソースについては、個別に分けず `book:manage:any` １つで運用し、必要になったタイミングで分割するのが現実的です。
+   細かく分けすぎると管理が破綻します。「コンテンツ編集者なら書籍の作成・編集・削除すべてできて当然」というリソースについては、個別に分けず `book:manage:all` １つで運用し、必要になったタイミングで分割するのが現実的です。
 
 3. 否定形 (not) の単一権限は作らない
 
@@ -344,16 +346,21 @@ export default function RoleGuard({ roles, children }: Props) {
 以下の機能は認証を必要とせず、すべてのユーザー（未ログインユーザー含む）が利用できます。
 バックエンドでは、これらの API エンドポイントを `permitAll()` もしくは同等の設定にする必要があります。
 
-| 機能分類     | エンドポイント（例）          | HTTP メソッド | 説明                                           |
-| :----------- | :---------------------------- | :------------ | :--------------------------------------------- |
-| **書籍**     | `/api/books`                  | `GET`         | 書籍の一覧を検索・取得する                     |
-|              | `/api/books/{bookId}`         | `GET`         | 特定の書籍の詳細（概要、目次）を取得する       |
-| **レビュー** | `/api/books/{bookId}/reviews` | `GET`         | 特定の書籍に投稿されたレビューの一覧を取得する |
-| **ジャンル** | `/api/genres`                 | `GET`         | ジャンルの一覧を取得する                       |
+| 機能分類     | エンドポイント（例）                                                       | HTTP メソッド | 説明                                                 |
+| :----------- | :------------------------------------------------------------------------- | :------------ | :--------------------------------------------------- |
+| **書籍**     | `/api/books`                                                               | `GET`         | 書籍の一覧を検索・取得する                           |
+|              | `/api/books/{bookId}`                                                      | `GET`         | 特定の書籍の詳細（概要）を取得する                   |
+|              | `/api/books/{bookId}/toc`                                                  | `GET`         | 特定の書籍の目次を取得する                           |
+|              | `/api/books/{bookId}/preview-setting`                                      | `GET`         | 特定の書籍の試し読み設定を取得する                   |
+|              | `/api/books/{bookId}/stats/reviews`                                        | `GET`         | 特定の書籍のレビュー統計（評価平均・件数）を取得する |
+|              | `/api/books/{bookId}/stats/favorites`                                      | `GET`         | 特定の書籍のお気に入り統計（件数）を取得する         |
+| **試し読み** | `/api/book-content/preview/books/{bookId}/chapters/{chapter}/pages/{page}` | `GET`         | 試し読み設定に基づいた無料ページコンテンツを取得する |
+| **ジャンル** | `/api/genres`                                                              | `GET`         | ジャンルの一覧を取得する                             |
+|              | `/api/genres/{genreId}`                                                    | `GET`         | 特定のジャンルを取得する                             |
 
 ## 10. subscriptionPlanについて
 
-subscriptionPlan は「契約状態を表す属性」であり、認可の補助情報である。
+`subscriptionPlan` は「契約状態を表す属性」であり、認可の補助情報である。
 
 つまり、
 
@@ -376,8 +383,26 @@ public class UserResponse {
 
 どこで判定するのか（層の責務）は以下のようになります。
 
-| レイヤー         | 判定内容               |
-| --------------- | ------------------ |
-| BFF             | ログイン状態      |
-| API Gateway     | 認証のみ               |
+| レイヤー        | 判定内容                             |
+| --------------- | ------------------------------------ |
+| BFF             | ログイン状態                         |
+| API Gateway     | 認証のみ                             |
 | Resource Server | Role + subscriptionPlan に基づく認可 |
+
+### subscriptionPlan による機能制限マトリックス
+
+USERロール保持者の中で、subscriptionPlan（FREE / PREMIUM）により利用可能な機能を制限する。
+
+| 機能                           | 未ログイン | FREE | PREMIUM | 備考                                           |
+| ------------------------------ | :--------: | :--: | :-----: | ---------------------------------------------- |
+| 書籍一覧・検索                 |     ✅     |  ✅  |   ✅    | パブリック（認証不要）                         |
+| 書籍詳細・目次閲覧             |     ✅     |  ✅  |   ✅    | パブリック（認証不要）                         |
+| 書籍コンテンツ（試し読み範囲） |     ✅     |  ✅  |   ✅    | 試し読み設定に基づく                           |
+| 書籍コンテンツ（全文）         |     ❌     |  ❌  |   ✅    | `UpgradeRequiredException`                     |
+| レビュー閲覧                   |     ❌     |  ✅  |   ✅    | `review:read:all` 権限が必要（認証必須）       |
+| レビュー投稿・編集・削除       |     ❌     |  ❌  |   ✅    | `UpgradeRequiredException`                     |
+| お気に入り管理                 |     ❌     |  ✅  |   ✅    | `favorite:manage:own` 権限が必要（認証必須）   |
+| ブックマーク（全操作）         |     ❌     |  ❌  |   ✅    | `UpgradeRequiredException`                     |
+| ユーザー情報閲覧・編集         |     ❌     |  ✅  |   ✅    | `user:read:own` / `user:update:own` 権限が必要 |
+
+**実装パターン**: サービス層で `SubscriptionService.isPremium(userId)` を使用し、`false` の場合は `UpgradeRequiredException` をスローする。`GlobalExceptionHandler` がこれを HTTP 403 + `UPGRADE_REQUIRED` エラーコードに変換し、フロントエンドはエラーコードを見てアップグレード案内を表示する。

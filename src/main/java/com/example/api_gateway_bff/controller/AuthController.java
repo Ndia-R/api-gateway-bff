@@ -164,6 +164,53 @@ public class AuthController {
         login(returnTo, request, session, response);
     }
 
+    /**
+     * パスワード変更エンドポイント
+     *
+     * <p>このエンドポイントは認証が必要なため、Spring Securityによって保護されています。</p>
+     * <p>Keycloakの <code>kc_action=UPDATE_PASSWORD</code> を利用した OAuth2 フローでパスワード変更を行います。</p>
+     *
+     * <h3>処理フロー:</h3>
+     * <ol>
+     *   <li>セッションに <code>pending_kc_action=UPDATE_PASSWORD</code> を保存</li>
+     *   <li><code>/oauth2/authorization/idp</code> へリダイレクトして新たな OAuth2 フローを開始</li>
+     *   <li>{@link CustomAuthorizationRequestResolver} がセッションを読み、認可リクエストに <code>kc_action=UPDATE_PASSWORD</code> を付加</li>
+     *   <li>Keycloak がパスワード変更フォームを表示（認証済みユーザーのため再ログイン不要）</li>
+     *   <li>変更完了後、OAuth2 コールバック経由でフロントエンドへ自動リダイレクト</li>
+     * </ol>
+     *
+     * @param returnTo パスワード変更後の復帰先URL（例: /profile）。省略可能。
+     * @param request HTTPリクエスト（Referer/Origin取得に使用）
+     * @param session HTTPセッション
+     * @param response HTTPレスポンス（リダイレクトに使用）
+     */
+    @GetMapping("/change-password")
+    public void changePassword(
+        @RequestParam(name = "return_to", required = false) String returnTo,
+        HttpServletRequest request,
+        HttpSession session,
+        HttpServletResponse response
+    ) throws IOException {
+        log.info("Authenticated user accessing /bff/auth/change-password");
+
+        // フロントエンドURLをセッションに保存（CustomAuthorizationRequestResolverが上書きしないよう事前に保存）
+        getFrontendUrlFromRequest(request, session);
+
+        // return_toをセッションに保存（authenticationSuccessHandlerが使用）
+        if (returnTo != null && !returnTo.isBlank()) {
+            session.setAttribute("redirect_after_login", returnTo);
+        }
+
+        // CustomAuthorizationRequestResolverへのシグナル: kc_action=UPDATE_PASSWORDを認可リクエストに付加させる
+        session.setAttribute("pending_kc_action", "UPDATE_PASSWORD");
+
+        // 新たなOAuth2認可フローを開始
+        // CustomAuthorizationRequestResolverがkc_action=UPDATE_PASSWORDを付加し、
+        // Keycloakがパスワード変更フォームを表示する
+        log.info("Starting new OAuth2 flow with kc_action=UPDATE_PASSWORD");
+        response.sendRedirect("/oauth2/authorization/idp");
+    }
+
     @PostMapping("/logout")
     public ResponseEntity<LogoutResponse> logout(
         HttpServletRequest request,
