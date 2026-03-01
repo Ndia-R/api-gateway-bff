@@ -60,11 +60,13 @@ COPY gradle gradle
 COPY build.gradle settings.gradle ./
 
 # 依存関係を事前ダウンロード（キャッシュ効率化）
-RUN ./gradlew dependencies --no-daemon || true
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew dependencies --no-daemon || true
 
 # ソースコードをコピーしてビルド
 COPY src src
-RUN ./gradlew bootJar --no-daemon
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew bootJar --no-daemon
 
 # ====================================
 # 本番環境: 実行ステージ

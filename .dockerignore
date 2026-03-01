@@ -1,0 +1,21 @@
+# ビルド成果物（大容量・不要）
+build/
+.gradle/
+bin/
+
+# Git
+.git/
+
+# IDE・ツール設定
+.vscode/
+.idea/
+.devcontainer/
+.claude/
+.serena/
+
+# ドキュメント
+docs/
+*.md
+
+# 環境変数ファイル（機密情報）
+.env
