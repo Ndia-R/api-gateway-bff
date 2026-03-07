@@ -143,7 +143,9 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
         if ("/bff/auth/signup".equals(originalRequestUri)) {
             // registration-pathが設定されていなければ、通常のログインフローにフォールバック
             if (registrationPath == null || registrationPath.isBlank()) {
-                log.warn("Sign-up is not supported: app.oauth2.registration-path is not configured. Falling back to login.");
+                log.warn(
+                    "Sign-up is not supported: app.oauth2.registration-path is not configured. Falling back to login."
+                );
                 return authorizationRequest;
             }
 
@@ -153,7 +155,8 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
             String issuerUri = clientRegistration.getProviderDetails().getIssuerUri();
 
             // issuer-uriと登録パスを結合して、最終的な登録URIを構築
-            String registrationUriString = issuerUri.endsWith("/") ? issuerUri.substring(0, issuerUri.length() - 1) : issuerUri;
+            String registrationUriString = issuerUri.endsWith("/") ? issuerUri.substring(0, issuerUri.length() - 1)
+                : issuerUri;
             registrationUriString += registrationPath;
 
             log.info("Redirecting to registration URI: {}", registrationUriString);
@@ -203,11 +206,19 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
         String returnTo = request.getParameter("return_to");
         if (returnTo != null && !returnTo.isBlank()) {
             session.setAttribute("redirect_after_login", returnTo);
-            log.info("Saved 'redirect_after_login' to session: {} (Session ID: {})", returnTo, session.getId());
+            log.info(
+                "Saved 'redirect_after_login' to session: {} (Session ID: {})",
+                sanitizeForLog(returnTo),
+                session.getId()
+            );
         }
         String frontendUrl = getFrontendUrlFromRequest(request);
         session.setAttribute("original_frontend_url", frontendUrl);
-        log.info("Saved 'original_frontend_url' to session: {} (Session ID: {})", frontendUrl, session.getId());
+        log.info(
+            "Saved 'original_frontend_url' to session: {} (Session ID: {})",
+            sanitizeForLog(frontendUrl),
+            session.getId()
+        );
     }
 
     /**
@@ -223,6 +234,12 @@ public class CustomAuthorizationRequestResolver implements OAuth2AuthorizationRe
      * @param request HTTPリクエスト
      * @return フロントエンドのベースURL
      */
+    private static String sanitizeForLog(String input) {
+        if (input == null)
+            return null;
+        return input.replaceAll("[\r\n\t]", "_");
+    }
+
     private String getFrontendUrlFromRequest(HttpServletRequest request) {
         String referer = request.getHeader("Referer");
         String frontendUrl = FrontendUrlUtils.extractFrontendUrlFromReferer(referer, corsAllowedOrigins);

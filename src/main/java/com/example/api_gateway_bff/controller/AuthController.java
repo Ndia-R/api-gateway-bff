@@ -55,6 +55,12 @@ public class AuthController {
      * @param session HTTPセッション
      * @return フロントエンドのベースURL
      */
+    private static String sanitizeForLog(String input) {
+        if (input == null)
+            return null;
+        return input.replaceAll("[\r\n\t]", "_");
+    }
+
     private String getFrontendUrlFromRequest(HttpServletRequest request, HttpSession session) {
         // 1. セッションに保存された値を優先（OAuth2コールバック対応）
         String savedFrontendUrl = (String) session.getAttribute("original_frontend_url");
@@ -125,10 +131,14 @@ public class AuthController {
         }
 
         // 認証済みのため、フロントエンドの認証後コールバックページにリダイレクト
-        // returnToがある場合はクエリパラメータとして付与
+        // returnToがある場合はセキュリティ検証してクエリパラメータとして付与
         String redirectUrl = dynamicFrontendUrl + "/auth-callback";
         if (returnTo != null && !returnTo.isBlank()) {
-            redirectUrl += "?return_to=" + URLEncoder.encode(returnTo, StandardCharsets.UTF_8);
+            if (FrontendUrlUtils.isUrlSafe(returnTo, corsAllowedOrigins, defaultFrontendUrl)) {
+                redirectUrl += "?return_to=" + URLEncoder.encode(returnTo, StandardCharsets.UTF_8);
+            } else {
+                log.warn("Unsafe return_to blocked in login: {}", sanitizeForLog(returnTo));
+            }
         }
 
         log.info("Redirecting to: {}", redirectUrl);

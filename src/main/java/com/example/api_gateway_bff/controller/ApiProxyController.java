@@ -165,7 +165,9 @@ public class ApiProxyController {
     ) {
         // リクエスト情報を取得
         String method = request.getMethod();
-        String path = request.getRequestURI().replace("/api", "");
+        // 先頭の /api のみを除去（String.replace は全出現箇所を置換するため使用しない）
+        String requestUri = request.getRequestURI();
+        String path = requestUri.startsWith("/api") ? requestUri.substring(4) : requestUri;
 
         // パスからサービスを選択
         String serviceName = selectService(path);
@@ -237,18 +239,18 @@ public class ApiProxyController {
                     // リフレッシュトークン競合対策: 同期制御
                     // ═══════════════════════════════════════════════════════════════
                     // 問題:
-                    //   複数のAPIリクエストが同時に到達すると、両方がアクセストークンの期限切れを検出し、
-                    //   同じリフレッシュトークンでリフレッシュ処理を実行しようとします。
-                    //   Keycloakはリフレッシュトークンの再利用を検出してエラーを返します。
+                    // 複数のAPIリクエストが同時に到達すると、両方がアクセストークンの期限切れを検出し、
+                    // 同じリフレッシュトークンでリフレッシュ処理を実行しようとします。
+                    // Keycloakはリフレッシュトークンの再利用を検出してエラーを返します。
                     //
                     // 解決策:
-                    //   authorizedClientManagerをロックとして使用し、同時にリフレッシュ処理を実行できるのは
-                    //   1スレッドのみに制限します。他のスレッドは待機し、リフレッシュ完了後に新しいトークンを取得します。
+                    // authorizedClientManagerをロックとして使用し、同時にリフレッシュ処理を実行できるのは
+                    // 1スレッドのみに制限します。他のスレッドは待機し、リフレッシュ完了後に新しいトークンを取得します。
                     //
                     // 参考:
-                    //   https://github.com/spring-projects/spring-security/issues/11461
-                    //   Spring Securityは意図的にフレームワーク側で同期制御を実装していない。
-                    //   アプリケーション側でsynchronizedブロックを使用することを推奨。
+                    // https://github.com/spring-projects/spring-security/issues/11461
+                    // Spring Securityは意図的にフレームワーク側で同期制御を実装していない。
+                    // アプリケーション側でsynchronizedブロックを使用することを推奨。
                     OAuth2AuthorizedClient authorizedClient;
                     synchronized (authorizedClientManager) {
                         // OAuth2AuthorizedClientManagerでトークンを取得
@@ -265,8 +267,10 @@ public class ApiProxyController {
                 } catch (ClientAuthorizationRequiredException e) {
                     // 認証が必要な場合（未認証ユーザー）はトークンなしでリクエストを転送
                     // リソースサーバー側で401を返す
-                    log.debug("Client authorization required for user {}, forwarding without token",
-                        authentication.getName());
+                    log.debug(
+                        "Client authorization required for user {}, forwarding without token",
+                        authentication.getName()
+                    );
                 }
             }
 

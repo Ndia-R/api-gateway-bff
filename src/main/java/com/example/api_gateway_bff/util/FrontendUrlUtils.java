@@ -79,13 +79,56 @@ public final class FrontendUrlUtils {
         for (String allowed : allowedOrigins) {
             allowed = allowed.trim();
             // ワイルドカード対応（例: https://localhost:*）
-            if (origin.matches(allowed.replace("*", ".*").replace(".", "\\."))) {
+            // 注意: ドットを先にエスケープしてからワイルドカードを変換する（逆順だと.*内の.も\\. に変換されてしまう）
+            if (origin.matches(allowed.replace(".", "\\.").replace("*", ".*"))) {
                 return true;
             }
         }
 
         log.warn("Origin not allowed: {}", origin);
         return false;
+    }
+
+    /**
+     * URLが安全なリダイレクト先であるかを検証する
+     *
+     * <p>相対パス（ホストなし）は常に安全とみなします。
+     * 絶対URLの場合はCORS_ALLOWED_ORIGINSで許可されたオリジンかチェックします。</p>
+     *
+     * @param url 検証するURL文字列
+     * @param corsAllowedOrigins カンマ区切りの許可オリジンリスト
+     * @param defaultFrontendUrl フォールバック用デフォルトフロントエンドURL
+     * @return 安全な場合はtrue、そうでない場合はfalse
+     */
+    public static boolean isUrlSafe(String url, String corsAllowedOrigins, String defaultFrontendUrl) {
+        try {
+            URI redirectUri = new URI(url);
+
+            // ホストが指定されていない相対パス（例: /dashboard）は安全
+            if (redirectUri.getHost() == null) {
+                return true;
+            }
+
+            // 絶対URLの場合はオリジンを確認
+            String origin = redirectUri.getScheme() + "://" + redirectUri.getAuthority();
+
+            if (corsAllowedOrigins == null || corsAllowedOrigins.isBlank()) {
+                // フォールバック: defaultFrontendUrlのホストと比較
+                try {
+                    String frontendHost = new URI(defaultFrontendUrl).getHost();
+                    return frontendHost != null &&
+                        (frontendHost.equals(redirectUri.getHost()) || "localhost".equals(redirectUri.getHost()));
+                } catch (URISyntaxException e) {
+                    return false;
+                }
+            }
+
+            return isOriginAllowed(origin, corsAllowedOrigins);
+
+        } catch (URISyntaxException e) {
+            log.warn("Invalid URL format for safety check: {}", url);
+            return false;
+        }
     }
 
     /**

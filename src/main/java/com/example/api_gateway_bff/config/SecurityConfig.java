@@ -6,6 +6,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+
+import java.util.Arrays;
+import java.util.List;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
@@ -83,6 +90,13 @@ public class SecurityConfig {
     private String corsAllowedOrigins;
 
     /**
+     * セッションCookieのSecure属性（SESSION_COOKIE_SECURE環境変数から注入）
+     * CSRFトークンCookieにも同じ値を適用してセッションCookieと一貫性を保つ
+     */
+    @Value("${SESSION_COOKIE_SECURE:false}")
+    private boolean sessionCookieSecure;
+
+    /**
      * Spring Securityのフィルターチェーン設定
      *
      * <p>このメソッドはSpring Securityの中核となる設定で、以下の順序で処理されます：</p>
@@ -125,13 +139,43 @@ public class SecurityConfig {
         http
 
             // ═══════════════════════════════════════════════════════════════
+            // CORS設定: 許可オリジンからのクロスオリジンリクエストを制御
+            // ═══════════════════════════════════════════════════════════════
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+
+            // ═══════════════════════════════════════════════════════════════
+            // セキュリティレスポンスヘッダー設定
+            // ═══════════════════════════════════════════════════════════════
+            .headers(
+                headers -> headers
+                    // Content-Security-Policy: BFFはJSONのみ返すためリソース読み込みを全禁止
+                    .contentSecurityPolicy(
+                        csp -> csp
+                            .policyDirectives("default-src 'none'; frame-ancestors 'none'; form-action 'self'")
+                    )
+                    // Referrer-Policy: クロスオリジン時はオリジンのみ送信
+                    .referrerPolicy(
+                        referrer -> referrer
+                            .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)
+                    )
+                    // Permissions-Policy: 不要なブラウザ機能へのアクセスを禁止
+                    .addHeaderWriter(
+                        new org.springframework.security.web.header.writers.StaticHeadersWriter(
+                            "Permissions-Policy",
+                            "geolocation=(), microphone=(), camera=()"
+                        )
+                    )
+            )
+
+            // ═══════════════════════════════════════════════════════════════
             // CSRF保護設定: POST/PUT/DELETE等の状態変更操作を保護
             // ═══════════════════════════════════════════════════════════════
             .csrf(
                 csrf -> csrf
                     // CSRFトークンをCookieに保存（HttpOnly=false: JavaScriptから読み取り可能）
                     // フロントエンドは X-XSRF-TOKEN ヘッダーにトークンを設定して送信
-                    .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                    // SameSite=Lax, Secure はセッションCookieと同じ値を明示設定
+                    .csrfTokenRepository(buildCsrfTokenRepository())
                     // CSRFトークンをリクエスト属性として利用可能にする
                     .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
             )
@@ -268,7 +312,7 @@ public class SecurityConfig {
             returnTo = (String) session.getAttribute("redirect_after_login");
             if (returnTo != null) {
                 session.removeAttribute("redirect_after_login");
-                log.info("Found explicit redirect_after_login: {}", returnTo);
+                log.info("Found explicit redirect_after_login: {}", sanitizeForLog(returnTo));
             }
 
             // 2. 明示的なreturn_toがない場合、Spring SecurityのSavedRequestから取得
@@ -296,7 +340,7 @@ public class SecurityConfig {
                                 // return_to= の後ろの値を取得してデコード
                                 String encodedValue = param.substring("return_to=".length());
                                 returnTo = java.net.URLDecoder.decode(encodedValue, StandardCharsets.UTF_8);
-                                log.info("Extracted return_to from SavedRequest: {}", returnTo);
+                                log.info("Extracted return_to from SavedRequest: {}", sanitizeForLog(returnTo));
                                 break;
                             }
                         }
@@ -311,15 +355,73 @@ public class SecurityConfig {
             if (returnTo != null && !returnTo.isBlank()) {
                 if (isUrlSafe(returnTo)) {
                     redirectUrl += "?return_to=" + URLEncoder.encode(returnTo, StandardCharsets.UTF_8);
-                    log.info("Final return_to: {}", returnTo);
+                    log.info("Final return_to: {}", sanitizeForLog(returnTo));
                 } else {
-                    log.warn("Unsafe redirect attempt blocked: {}", returnTo);
+                    log.warn("Unsafe redirect attempt blocked: {}", sanitizeForLog(returnTo));
                 }
             }
 
             log.info("Redirecting to: {}", redirectUrl);
             response.sendRedirect(redirectUrl);
         };
+    }
+
+    private static String sanitizeForLog(String input) {
+        if (input == null)
+            return null;
+        return input.replaceAll("[\r\n\t]", "_");
+    }
+
+    /**
+     * CORSフィルター設定
+     *
+     * <p>CORS_ALLOWED_ORIGINSで指定されたオリジンからのクロスオリジンリクエストを許可します。</p>
+     * <p>BFFはCookieベースのセッションを使用するため、AllowCredentials=trueが必須です。</p>
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+
+        // CORS_ALLOWED_ORIGINSをカンマ区切りでリストに変換
+        if (corsAllowedOrigins != null && !corsAllowedOrigins.isBlank()) {
+            List<String> origins = Arrays.stream(corsAllowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
+            config.setAllowedOrigins(origins);
+        }
+
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        // CookieベースのセッションとCSRFトークンの送受信に必須
+        config.setAllowCredentials(true);
+        // OPTIONSプリフライトリクエストのキャッシュ時間（秒）
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+
+    /**
+     * CSRFトークンCookieを生成する
+     *
+     * <p>セッションCookieと同じ属性値を明示設定し、一貫性を保ちます：</p>
+     * <ul>
+     *   <li><b>HttpOnly=false</b>: フロントエンドJSがCookieを読んでX-XSRF-TOKENヘッダーにセットするために必須</li>
+     *   <li><b>SameSite=Lax</b>: セッションCookieと統一。通常ナビゲーションは許可しつつCSRF攻撃を防ぐ</li>
+     *   <li><b>Secure</b>: SESSION_COOKIE_SECURE環境変数と連動。本番(HTTPS)ではtrue</li>
+     * </ul>
+     */
+    private CookieCsrfTokenRepository buildCsrfTokenRepository() {
+        CookieCsrfTokenRepository repository = new CookieCsrfTokenRepository();
+        repository.setCookieCustomizer(
+            cookie -> cookie
+                .httpOnly(false)
+                .sameSite("Lax")
+                .secure(sessionCookieSecure)
+        );
+        return repository;
     }
 
     /**
@@ -355,7 +457,8 @@ public class SecurityConfig {
             for (String allowed : allowedOrigins) {
                 allowed = allowed.trim();
                 // ワイルドカード対応（例: https://localhost:*）
-                if (origin.matches(allowed.replace("*", ".*").replace(".", "\\."))) {
+                // 注意: ドットを先にエスケープしてからワイルドカードを変換する（逆順だと.*内の.も\\. に変換されてしまう）
+                if (origin.matches(allowed.replace(".", "\\.").replace("*", ".*"))) {
                     return true;
                 }
             }
