@@ -39,8 +39,8 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
     ├─ APIプロキシ (/api/**)  ← パスベースで複数のリソースサーバーにルーティング
     └─ トークン管理（Redisセッション）
     ↓ Authorization: Bearer <access_token>
-    ├─ /api/my-books/** → My Books API
-    └─ /api/my-musics/** → My Musics API
+    ├─ /api/{SERVICE_01_PATH_PREFIX}/** → Service 01（環境変数で動的設定）
+    └─ /api/{SERVICE_02_PATH_PREFIX}/** → Service 02（設定のみで追加可能）
          ↓
 複数のリソースサーバー
     ├─ ビジネスロジック
@@ -55,7 +55,7 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 
 ## 技術スタック
 
-- **言語**: Java 17
+- **言語**: Java 21
 - **フレームワーク**: Spring Boot 3.5.6
 - **認証**: Spring Security OAuth2 Client (OIDC準拠、PKCE対応)
 - **セッション管理**: Spring Session Data Redis
@@ -106,47 +106,95 @@ OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）とのOAuth
 
 ### 前提条件
 
-- Java 17以上
 - Docker & Docker Compose
 - OIDC準拠の認証プロバイダー（Keycloak、Auth0、Okta等）
+- 外部Dockerネットワーク `vsv-emerald-network`（ステップ1で作成）
 
-### 環境変数の設定
+### セットアップ手順
 
-`.env.example` をコピーして `.env` を作成し、以下の環境変数を設定してください。
+#### ステップ1: 外部Dockerネットワークの作成（初回のみ）
 
 ```bash
-# Identity Provider Configuration
-IDP_CLIENT_ID=your-client-id
-IDP_CLIENT_SECRET=your-client-secret
-IDP_ISSUER_URI=https://your-idp.com/realms/your-realm
+docker network create vsv-emerald-network
+```
 
-# Application Configuration
-DEFAULT_FRONTEND_URL=https://localhost
+> 複数のDockerプロジェクト間でネットワークを共有するために外部ネットワークを使用しています。
+
+#### ステップ2: Docker Secretsの作成（初回のみ）
+
+機密情報はDockerの `secrets` 機能でファイルとして管理します（`.gitignore` 対象のため Gitには追跡されません）。
+
+```bash
+mkdir -p secrets
+printf 'your-redis-password' > secrets/redis_password
+printf 'your-client-secret'  > secrets/idp_client_secret
+chmod 600 secrets/redis_password secrets/idp_client_secret
+```
+
+| ファイル | 内容 |
+|---------|------|
+| `secrets/redis_password` | Redisの認証パスワード（任意の文字列） |
+| `secrets/idp_client_secret` | IDプロバイダーのクライアントシークレット |
+
+#### ステップ3: 環境変数ファイルの作成
+
+```bash
+cp .env.example .env
+```
+
+`.env` を開き、最低限以下の変数を設定してください。
+
+```bash
+# VPSのホスト名（開発環境: localhost）
+VPS_HOSTNAME=localhost
+
+# IDプロバイダー設定
+IDP_CLIENT_ID=your-client-id
+IDP_ISSUER_URI=https://your-idp.com/realms/your-realm
+IDP_REGISTRATION_PATH=/protocol/openid-connect/registrations
+
+# リソースサーバー設定
+RESOURCE_SERVERS=service-01
 SERVICE_01_URL=http://your-api:8080
 SERVICE_01_PATH_PREFIX=/your-service
 ```
 
-### Docker Composeで起動
+> `IDP_CLIENT_SECRET` と Redis パスワードはステップ2の `secrets/` ファイルで管理するため、`.env` には記載しません。
+>
+> `IDP_REDIRECT_URI`・`IDP_POST_LOGOUT_REDIRECT_URI`・`DEFAULT_FRONTEND_URL` は `VPS_HOSTNAME` から自動生成されるため、通常は設定不要です。
+
+#### ステップ4: コンテナ起動
 
 ```bash
-# 環境を起動
 docker compose up -d
-
-# ログを確認
-docker compose logs -f api-gateway-bff
 ```
 
-### ローカル開発
+> `api-gateway-bff` コンテナは `command: sleep infinity` で起動する **DevContainer方式** です。この時点ではアプリケーションはまだ起動していません。
+
+#### ステップ5: コンテナ内でアプリケーションを起動
 
 ```bash
-# ビルド
-./gradlew build
+# コンテナに接続
+docker compose exec api-gateway-bff bash
 
-# アプリケーション実行
+# コンテナ内でアプリケーションを起動
 ./gradlew bootRun
+```
 
-# テスト実行
+起動確認:
+```bash
+curl http://localhost:8888/actuator/health
+# → {"status":"UP"}
+```
+
+### テスト実行
+
+```bash
+# コンテナ内で実行
 ./gradlew test
+
+# 特定のテストクラスのみ実行
+./gradlew test --tests RateLimitIntegrationTest
 ```
 
 ## エンドポイント
@@ -206,20 +254,22 @@ BFFは `/api/**` 配下のリクエストをパスプレフィックスに基づ
 
 | メソッド | パス | 説明 | 転送先 |
 |---------|------|------|--------|
-| GET/POST/PUT/DELETE/PATCH | `/api/my-books/**` | My Books APIへのリクエスト | `${MY_BOOKS_SERVICE_URL}/**` |
-| GET/POST/PUT/DELETE/PATCH | `/api/my-musics/**` | My Musics APIへのリクエスト | `${MY_MUSICS_SERVICE_URL}/**` |
+| GET/POST/PUT/DELETE/PATCH | `/api/{SERVICE_01_PATH_PREFIX}/**` | Service 01へのリクエスト | `${SERVICE_01_URL}/**` |
+| GET/POST/PUT/DELETE/PATCH | `/api/{SERVICE_02_PATH_PREFIX}/**` | Service 02へのリクエスト | `${SERVICE_02_URL}/**` |
 
-**プロキシの動作例**:
+ルーティングは `.env` の `RESOURCE_SERVERS`・`SERVICE_XX_PATH_PREFIX` で動的に設定します。新しいリソースサーバーの追加にコード変更は不要です。
+
+**プロキシの動作例**（`SERVICE_01_PATH_PREFIX=/my-books` の場合）:
 ```
 フロントエンド                    BFF                          リソースサーバー
-GET /api/my-books/list     →  GET /list          →  My Books API  (トークン付与)
-POST /api/my-musics/search →  POST /search       →  My Musics API (トークン付与)
-GET /api/my-books/1        →  GET /1             →  My Books API  (トークン付与、権限チェックはリソースサーバー側)
+GET /api/my-books/list     →  GET /list          →  Service 01  (トークン付与)
+POST /api/my-books/search  →  POST /search       →  Service 01  (トークン付与)
+GET /api/my-books/1        →  GET /1             →  Service 01  (トークン付与、権限チェックはリソースサーバー側)
 ```
 
 **パスプレフィックスの自動削除**:
-- `/api/my-books/list` → My Books APIに `/list` として転送
-- `/api/my-musics/search` → My Musics APIに `/search` として転送
+- `/api/my-books/list` → Service 01に `/list` として転送
+- `/api/my-books/search` → Service 01に `/search` として転送
 
 ## DTOクラス
 
@@ -365,15 +415,24 @@ fetch('/api/books', {
 
 ## 環境変数
 
+> **機密情報の管理**: `IDP_CLIENT_SECRET` と Redis パスワードは `.env` ではなく Docker Secrets（`secrets/` ディレクトリ）で管理します。詳細は「[クイックスタート > ステップ2](#ステップ2-docker-secretsの作成初回のみ)」を参照してください。
+
+### Common Configuration
+
+| 変数名 | 説明 | 例 |
+|--------|------|----|
+| `VPS_HOSTNAME` | VPSのホスト名。この値から `IDP_REDIRECT_URI`・`IDP_POST_LOGOUT_REDIRECT_URI`・`DEFAULT_FRONTEND_URL` が自動生成される | `localhost`（開発）/ `vsv-emerald.skygroup.local`（本番） |
+
 ### Identity Provider Configuration
 
 | 変数名 | 説明 | 必須 |
 |--------|------|------|
 | `IDP_CLIENT_ID` | OAuth2クライアントID | ✅ |
-| `IDP_CLIENT_SECRET` | OAuth2クライアントシークレット | ✅ |
+| `IDP_CLIENT_SECRET` | Docker Secretsで管理（`secrets/idp_client_secret` ファイル） | - |
 | `IDP_ISSUER_URI` | IDプロバイダーのIssuer URI（Keycloak、Auth0、Okta等） | ✅ |
-| `IDP_REDIRECT_URI` | OAuth2リダイレクトURI | ✅ |
-| `IDP_POST_LOGOUT_REDIRECT_URI` | ログアウト後のリダイレクトURI | ✅ |
+| `IDP_REGISTRATION_PATH` | IdPの登録エンドポイントへのパス（issuer-uriからの相対パス） | ✅ |
+| `IDP_REDIRECT_URI` | OAuth2リダイレクトURI（`VPS_HOSTNAME` から自動生成） | 自動 |
+| `IDP_POST_LOGOUT_REDIRECT_URI` | ログアウト後のリダイレクトURI（`VPS_HOSTNAME` から自動生成） | 自動 |
 
 **重要**: `IDP_ISSUER_URI`を使用することで、Spring Securityが自動的に各エンドポイント（authorize, token, jwk, logout）を検出します。個別エンドポイント指定は不要です。
 
@@ -381,19 +440,35 @@ fetch('/api/books', {
 
 | 変数名 | 説明 | デフォルト値 |
 |--------|------|-------------|
-| `DEFAULT_FRONTEND_URL` | デフォルトフロントエンドURL（フォールバック用） | - |
-| `CORS_ALLOWED_ORIGINS` | CORS許可オリジン（カンマ区切り） | - |
+| `DEFAULT_FRONTEND_URL` | デフォルトフロントエンドURL（`VPS_HOSTNAME` から自動生成） | 自動 |
+| `CORS_ALLOWED_ORIGINS` | CORS許可オリジン（カンマ区切り）。複数ドメイン構成の場合は明示指定 | `https://${VPS_HOSTNAME}` |
 
 ### Resource Server Configuration
 
-複数のリソースサーバーを設定できます。以下は設定例です。
+リソースサーバーは `RESOURCE_SERVERS` で動的に管理します。Dockerイメージの再ビルドなしにサービスの追加・削除が可能です。
 
 | 変数名 | 説明 | 例 |
-|--------|------|-----|
-| `MY_BOOKS_SERVICE_URL` | My Books APIのURL | `http://my-books-api:8080` |
-| `MY_BOOKS_SERVICE_TIMEOUT` | My Books APIのタイムアウト（秒） | `30` |
-| `MY_MUSICS_SERVICE_URL` | My Musics APIのURL | `http://my-musics-api:8081` |
-| `MY_MUSICS_SERVICE_TIMEOUT` | My Musics APIのタイムアウト（秒） | `30` |
+|--------|------|----|
+| `RESOURCE_SERVERS` | 有効なサービス識別子（カンマ区切り） | `service-01` / `service-01,service-02` |
+| `SERVICE_01_URL` | サービス01のベースURL | `http://my-books-api:8080` |
+| `SERVICE_01_PATH_PREFIX` | サービス01のパスプレフィックス | `/my-books` |
+
+**新しいサービスを追加する場合**:
+```bash
+# .env に追記
+RESOURCE_SERVERS=service-01,service-02
+SERVICE_02_URL=http://my-music-api:8080
+SERVICE_02_PATH_PREFIX=/my-music
+```
+
+### Docker Secrets（機密情報）
+
+機密情報は `.env` ではなくファイルで管理します（`.gitignore` 対象）。
+
+| ファイルパス | 説明 |
+|------------|------|
+| `secrets/redis_password` | Redis の認証パスワード（`redis_password` として参照） |
+| `secrets/idp_client_secret` | IDプロバイダーのクライアントシークレット（`idp_client_secret` として参照） |
 
 ### Redis Configuration
 
@@ -401,6 +476,7 @@ fetch('/api/books', {
 |--------|------|-------------|
 | `REDIS_HOST` | Redisホスト | `redis` |
 | `REDIS_PORT` | Redisポート | `6379` |
+| `REDIS_PASSWORD` | Docker Secretsで管理（`secrets/redis_password` ファイル） | - |
 
 ### Session Configuration
 
@@ -422,7 +498,8 @@ fetch('/api/books', {
 
 | 変数名 | 説明 | デフォルト値 |
 |--------|------|-------------|
-| `LOG_LEVEL` | ログレベル（DEBUG、INFO、WARN、ERROR） | `INFO` |
+| `LOG_LEVEL` | ルートログレベル（DEBUG、INFO、WARN、ERROR） | `INFO` |
+| `LOG_LEVEL_SECURITY` | Spring Security関連ログレベル（認証フローのデバッグに有効） | `INFO` |
 
 ## プロジェクト構成
 
@@ -477,11 +554,17 @@ src/main/java/com/example/api_gateway_bff/
 
 ### Docker環境
 
+このプロジェクトは **DevContainer方式** を採用しています。コンテナを起動しただけではアプリケーションは動作しません（`command: sleep infinity`）。コンテナに接続して `./gradlew bootRun` を実行します。
+
 ```bash
-# 環境を起動
+# コンテナ起動（アプリはまだ動いていない）
 docker compose up -d
 
-# ログを確認
+# コンテナに接続してアプリを起動
+docker compose exec api-gateway-bff bash
+./gradlew bootRun
+
+# ログ確認（別ターミナルから）
 docker compose logs -f api-gateway-bff
 
 # 環境を停止
@@ -525,21 +608,27 @@ WSL2 (Ubuntu) → VSCode DevContainer → Docker Compose
 | (プロジェクトディレクトリ) | `/workspace` | ソースコード |
 | `gradle-cache` | `/home/vscode/.gradle` | Gradleキャッシュ |
 | `claude-config` | `/home/vscode/.claude` | Claude Code設定・認証情報 |
+| `gemini-config` | `/home/vscode/.gemini` | Gemini設定 |
 
 #### Docker Compose サービス構成
 
 **1. api-gateway-bff (開発コンテナ)**
 ```yaml
 ports: 8888:8080
-networks: shared-network
-depends_on: [redis]
+networks: vsv-emerald-network  # external: true（事前作成が必要）
+depends_on:
+  redis:
+    condition: service_healthy
+secrets: [redis_password, idp_client_secret]
+command: sleep infinity  # DevContainer方式：コンテナ内で ./gradlew bootRun を実行
 ```
 
 **2. redis (セッションストレージ)**
 ```yaml
 image: redis:8.2
-ports: 6379:6379
-networks: shared-network
+secrets: [redis_password]
+command: redis-server --requirepass $(cat /run/secrets/redis_password)  # パスワード必須
+networks: vsv-emerald-network
 ```
 
 #### ネットワーク構成
@@ -547,9 +636,11 @@ networks: shared-network
 外部ブラウザ
     ↓ http://localhost:8888
 api-gateway-bff:8080 ←→ redis:6379
-    ↓ http://auth.localhost:8444 (外部IDプロバイダー)
+    ↓ ${IDP_ISSUER_URI} (外部IDプロバイダー)
 IDプロバイダー (外部認証サーバー: Keycloak/Auth0/Okta等)
 ```
+
+使用するDockerネットワーク `vsv-emerald-network` は `external: true`（プロジェクト外で管理）のため、`docker compose up` 前に作成が必要です。
 
 **重要**: 外部の認証サーバーを使用します。`IDP_ISSUER_URI`環境変数でOIDC準拠プロバイダーの接続先を指定してください。
 
@@ -629,6 +720,33 @@ IDP_ISSUER_URI=https://cognito-idp.{region}.amazonaws.com/{user-pool-id}
 - レート制限設定（`RATE_LIMIT_*`環境変数）を確認
 - Redisが正常に動作しているか確認
 - 必要に応じてレート制限を無効化: `RATE_LIMIT_ENABLED=false`
+
+#### 6. Docker Secrets エラー（コンテナが起動しない）
+
+```
+Error response from daemon: failed to create task for container: ... secret not found
+```
+
+`secrets/` ディレクトリまたはファイルが存在しない場合に発生します。
+
+```bash
+mkdir -p secrets
+printf 'your-redis-password' > secrets/redis_password
+printf 'your-client-secret'  > secrets/idp_client_secret
+chmod 600 secrets/redis_password secrets/idp_client_secret
+```
+
+#### 7. 外部ネットワークが見つからないエラー
+
+```
+network vsv-emerald-network declared as external, but could not be found
+```
+
+`docker compose up` の前に外部ネットワークを作成してください。
+
+```bash
+docker network create vsv-emerald-network
+```
 
 ## API使用例（BFFパターン）
 

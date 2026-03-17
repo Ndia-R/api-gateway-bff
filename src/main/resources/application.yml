@@ -1,6 +1,10 @@
 spring:
   application:
     name: api-gateway-bff
+  
+  # Docker Secretsを環境変数として読み込むための設定
+  config:
+    import: "optional:configtree:/run/secrets/"
 
   # OAuth2 Client Configuration
   security:
@@ -9,7 +13,7 @@ spring:
         registration:
           idp:
             client-id: ${IDP_CLIENT_ID}
-            client-secret: ${IDP_CLIENT_SECRET}
+            client-secret: ${idp_client_secret}
             scope: openid,profile,email
             authorization-grant-type: authorization_code
             redirect-uri: ${IDP_REDIRECT_URI}
@@ -23,7 +27,7 @@ spring:
     redis:
       host: redis
       port: 6379
-      password: ${REDIS_PASSWORD}
+      password: ${redis_password}
       timeout: 2000ms
       lettuce:
         pool:

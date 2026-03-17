@@ -72,7 +72,9 @@
       "mcp__serena__find_referencing_symbols",
       "mcp__serena__get_current_config",
       "mcp__serena__activate_project",
-      "mcp__serena__think_about_collected_information"
+      "mcp__serena__think_about_collected_information",
+      "Bash(ls /workspace/.env*)",
+      "Bash(docker-compose version:*)"
     ],
     "deny": [],
     "ask": []

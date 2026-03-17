@@ -19,3 +19,6 @@ docs/
 
 # 環境変数ファイル（機密情報）
 .env
+
+# Docker secrets files
+secrets/

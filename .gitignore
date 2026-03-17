@@ -38,3 +38,6 @@ out/
 
 ### env files ###
 .env
+
+# Docker secrets files
+secrets/
