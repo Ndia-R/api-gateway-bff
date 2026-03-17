@@ -49,6 +49,9 @@ public class RateLimitConfig {
     @Value("${spring.data.redis.port}")
     private int redisPort;
 
+    @Value("${spring.data.redis.password:}")
+    private String redisPassword;
+
     /**
      * RedisClient Bean定義
      *
@@ -64,12 +67,15 @@ public class RateLimitConfig {
      */
     @Bean(destroyMethod = "close")
     public RedisClient redisClient() {
-        RedisURI redisUri = RedisURI.builder()
+        RedisURI.Builder builder = RedisURI.builder()
             .withHost(redisHost)
-            .withPort(redisPort)
-            .build();
+            .withPort(redisPort);
 
-        return RedisClient.create(redisUri);
+        if (redisPassword != null && !redisPassword.isEmpty()) {
+            builder.withPassword(redisPassword.toCharArray());
+        }
+
+        return RedisClient.create(builder.build());
     }
 
     /**
